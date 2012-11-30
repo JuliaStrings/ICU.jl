@@ -13,12 +13,10 @@
 # after the locale is set to Turkish.
 #
 
-require("OpenLib")
 require("UTF16")
 
 module ICU
 using Base
-using Openlib
 using UTF16
 
 import Base.lowercase,
@@ -30,8 +28,8 @@ export foldcase,
        titlecase,
        uppercase
 
-const iculib = openlib(OS_NAME == :Darwin ? "libicucore" : "libicuuc")
-const iculibi18n = OS_NAME == :Darwin ? iculib : openlib("libicui18n")
+const iculib = dlopen(OS_NAME == :Darwin ? "libicucore" : "libicuuc")
+const iculibi18n = OS_NAME == :Darwin ? iculib : dlopen("libicui18n")
 
 for suffix in ["", ["_"*string(i) for i in 42:50]]
     if dlsym_e(iculib, "u_strToUpper"*suffix) != C_NULL
