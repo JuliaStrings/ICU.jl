@@ -16,7 +16,6 @@
 require("UTF16")
 
 module ICU
-using Base
 using UTF16
 
 import Base.lowercase,
@@ -53,7 +52,10 @@ for suffix in ["", ["_"*string(i) for i in 42:50]]
                   :ucasemap_utf8FoldCase,
                   :ucasemap_utf8ToLower,
                   :ucasemap_utf8ToTitle,
-                  :ucasemap_utf8ToUpper)
+                  :ucasemap_utf8ToUpper,
+                  :udat_close,
+                  :udat_format,
+                  :udat_open)
             @eval const $f = $(string(f) * suffix)
         end
         break
@@ -61,6 +63,7 @@ for suffix in ["", ["_"*string(i) for i in 42:50]]
 end
 
 typealias UErrorCode Int32
+typealias UChar Uint16
 
 locale = C_NULL
 casemap = C_NULL
@@ -276,6 +279,32 @@ function add(cal::ICUCalendar, field::Int32, amount::Integer)
         cal.ptr, field, amount, err)
 end
 
+type ICUDateFormat
+    ptr::Ptr{Void}
+    ICUDateFormat(p::Ptr) = (self = new(p); finalizer(self, close); self)
+end
+
+function ICUDateFormat()
+    err = UErrorCode[0]
+    p = ccall(dlsym(iculibi18n,udat_open), Ptr{Void},
+          (Int32, Int32, Ptr{Uint8}, Ptr{UChar}, Int32, Ptr{UChar}, Int32, Ptr{UErrorCode}),
+          0, 0, C_NULL, C_NULL, -1, C_NULL, -1, err)
+    ICUDateFormat(p)
+end
+
+close(df::ICUDateFormat) =
+    ccall(dlsym(iculibi18n,udat_close), Void, (Ptr{Void},), df.ptr)
+
+function format(df::ICUDateFormat, millis::Float64)
+    err = UErrorCode[0]
+    buflen = 64
+    buf = zeros(UChar, buflen)
+    len = ccall(dlsym(iculibi18n,udat_format), Int32,
+          (Ptr{Void}, Float64, Ptr{UChar}, Int32, Ptr{Void}, Ptr{UErrorCode}),
+          df.ptr, millis, buf, buflen, C_NULL, err)
+    UTF16String(buf[1:len])
+end
+
 function test_icucalendar()
     cal = ICUCalendar("America/Los_Angeles")
     setMillis(cal, getNow())
@@ -283,6 +312,9 @@ function test_icucalendar()
               UCAL_HOUR_OF_DAY, UCAL_MINUTE, UCAL_SECOND]
     println(get(cal,fields))
     clear(cal)
+    df = ICUDateFormat()
+    s = format(df, getNow())
+    show(s)
 end
 
 end # module
