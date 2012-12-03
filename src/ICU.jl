@@ -226,7 +226,13 @@ function ICUCalendar(timezone::String)
         tz_u16.data, length(tz_u16.data), locale, 0, err)
     ICUCalendar(p)
 end
-ICUCalendar() = ICUCalendar("UTC")
+function ICUCalendar()
+    err = UErrorCode[0]
+    p = ccall(dlsym(iculibi18n,ucal_open), Ptr{Void},
+        (Ptr{Uint16},Int32,Ptr{Uint8},Int32,Ptr{UErrorCode}),
+        C_NULL, -1, locale, 0, err)
+    ICUCalendar(p)
+end
 
 close(cal::ICUCalendar) =
     ccall(dlsym(iculibi18n,ucal_close), Void, (Ptr{Void},), cal.ptr)
@@ -249,14 +255,14 @@ function setDate(cal::ICUCalendar, y::Integer, m::Integer, d::Integer)
     err = UErrorCode[0]
     ccall(dlsym(iculibi18n,ucal_setDate), Void,
         (Ptr{Void},Int32,Int32,Int32,Ptr{UErrorCode}),
-        cal.ptr, y, m, d, err)
+        cal.ptr, y, m-1, d, err)
 end
 
-function setDateTime(cal::ICUCalendar, y::Integer, m::Integer, d::Integer, h::Integer, m::Integer, s::Integer)
+function setDateTime(cal::ICUCalendar, y::Integer, mo::Integer, d::Integer, h::Integer, mi::Integer, s::Integer)
     err = UErrorCode[0]
     ccall(dlsym(iculibi18n,ucal_setDateTime), Void,
         (Ptr{Void},Int32,Int32,Int32,Int32,Int32,Int32,Ptr{UErrorCode}),
-        cal.ptr, y, m, d, h, m, s, err)
+        cal.ptr, y, mo-1, d, h, mi, s, err)
 end
 
 function clear(cal::ICUCalendar)
@@ -279,16 +285,28 @@ function add(cal::ICUCalendar, field::Int32, amount::Integer)
         cal.ptr, field, amount, err)
 end
 
+export ICUDateFormat,
+       close,
+       format
+
 type ICUDateFormat
     ptr::Ptr{Void}
     ICUDateFormat(p::Ptr) = (self = new(p); finalizer(self, close); self)
 end
 
+function ICUDateFormat(tz)
+    tz_u16 = utf16(tz)
+    err = UErrorCode[0]
+    p = ccall(dlsym(iculibi18n,udat_open), Ptr{Void},
+          (Int32, Int32, Ptr{Uint8}, Ptr{UChar}, Int32, Ptr{UChar}, Int32, Ptr{UErrorCode}),
+          1, 2, locale, tz_u16.data, length(tz_u16.data), C_NULL, -1, err)
+    ICUDateFormat(p)
+end
 function ICUDateFormat()
     err = UErrorCode[0]
     p = ccall(dlsym(iculibi18n,udat_open), Ptr{Void},
           (Int32, Int32, Ptr{Uint8}, Ptr{UChar}, Int32, Ptr{UChar}, Int32, Ptr{UErrorCode}),
-          0, 0, C_NULL, C_NULL, -1, C_NULL, -1, err)
+          1, 2, locale, C_NULL, -1, C_NULL, -1, err)
     ICUDateFormat(p)
 end
 
