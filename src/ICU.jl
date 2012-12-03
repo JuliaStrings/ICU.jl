@@ -40,6 +40,7 @@ for suffix in ["", ["_"*string(i) for i in 42:50]]
                   :ucal_clear,
                   :ucal_close,
                   :ucal_get,
+                  :ucal_getDefaultTimeZone,
                   :ucal_getMillis,
                   :ucal_getNow,
                   :ucal_open,
@@ -153,6 +154,7 @@ end
 export ICUCalendar,
        add,
        get,
+       getDefaultTimeZone,
        getMillis,
        getNow,
        setDate,
@@ -283,6 +285,15 @@ function add(cal::ICUCalendar, field::Int32, amount::Integer)
     ccall(dlsym(iculibi18n,ucal_add), Int32,
         (Ptr{Void},Int32,Int32,Ptr{UErrorCode}),
         cal.ptr, field, amount, err)
+end
+
+function getDefaultTimeZone()
+    bufsz = 64
+    buf = Array(Uint16, bufsz)
+    err = UErrorCode[0]
+    len = ccall(dlsym(iculibi18n,ucal_getDefaultTimeZone), Int32,
+                (Ptr{UChar},Int32,Ptr{UErrorCode}), buf, bufsz, err)
+    UTF16String(buf[1:len])
 end
 
 export ICUDateFormat,
