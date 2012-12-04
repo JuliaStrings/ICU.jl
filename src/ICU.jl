@@ -308,24 +308,41 @@ export ICUDateFormat,
        close,
        format
 
+export UDAT_NONE,
+       UDAT_FULL,
+       UDAT_LONG,
+       UDAT_MEDIUM,
+       UDAT_SHORT,
+       UDAT_RELATIVE
+
+const UDAT_NONE     = int32(-1)
+const UDAT_FULL     = int32(0)
+const UDAT_LONG     = int32(1)
+const UDAT_MEDIUM   = int32(2)
+const UDAT_SHORT    = int32(3)
+const UDAT_RELATIVE = int32(1<<7)
+
 type ICUDateFormat
     ptr::Ptr{Void}
     ICUDateFormat(p::Ptr) = (self = new(p); finalizer(self, close); self)
 end
 
-function ICUDateFormat(tz)
+function ICUDateFormat(pattern::String, tz::String)
+    pattern_u16 = utf16(pattern)
     tz_u16 = utf16(tz)
     err = UErrorCode[0]
     p = ccall(dlsym(iculibi18n,udat_open), Ptr{Void},
           (Int32, Int32, Ptr{Uint8}, Ptr{UChar}, Int32, Ptr{UChar}, Int32, Ptr{UErrorCode}),
-          1, 2, locale, tz_u16.data, length(tz_u16.data), C_NULL, -1, err)
+          -2, -2, locale, tz_u16.data, length(tz_u16.data),
+          pattern_u16.data, length(pattern_u16.data), err)
     ICUDateFormat(p)
 end
-function ICUDateFormat()
+function ICUDateFormat(tstyle::Integer, dstyle::Integer, tz::String)
+    tz_u16 = utf16(tz)
     err = UErrorCode[0]
     p = ccall(dlsym(iculibi18n,udat_open), Ptr{Void},
           (Int32, Int32, Ptr{Uint8}, Ptr{UChar}, Int32, Ptr{UChar}, Int32, Ptr{UErrorCode}),
-          1, 2, locale, C_NULL, -1, C_NULL, -1, err)
+          tstyle, dstyle, locale, tz_u16.data, length(tz_u16.data), C_NULL, -1, err)
     ICUDateFormat(p)
 end
 
