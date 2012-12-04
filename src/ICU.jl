@@ -57,7 +57,8 @@ for suffix in ["", ["_"*string(i) for i in 42:50]]
                   :ucasemap_utf8ToUpper,
                   :udat_close,
                   :udat_format,
-                  :udat_open)
+                  :udat_open,
+                  :udat_parse)
             @eval const $f = $(string(f) * suffix)
         end
         break
@@ -305,8 +306,8 @@ function getDefaultTimeZone()
 end
 
 export ICUDateFormat,
-       close,
-       format
+       format,
+       parse
 
 export UDAT_NONE,
        UDAT_FULL,
@@ -357,6 +358,16 @@ function format(df::ICUDateFormat, millis::Float64)
           (Ptr{Void}, Float64, Ptr{UChar}, Int32, Ptr{Void}, Ptr{UErrorCode}),
           df.ptr, millis, buf, buflen, C_NULL, err)
     UTF16String(buf[1:len])
+end
+
+function parse(df::ICUDateFormat, s::String)
+    s16 = utf16(s)
+    err = UErrorCode[0]
+    ret = ccall(dlsym(iculibi18n,udat_parse), Float64,
+                (Ptr{Void}, Ptr{UChar}, Int32, Ptr{Int32}, Ptr{UErrorCode}),
+                df.ptr, s16.data, length(s16.data), C_NULL, err)
+    @assert err[1] == 0
+    ret
 end
 
 function test_icucalendar()
