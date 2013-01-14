@@ -18,9 +18,6 @@ require("UTF16")
 module ICU
 using UTF16
 
-import Base.lowercase,
-       Base.uppercase
-
 export foldcase,
        lowercase,
        set_locale,
