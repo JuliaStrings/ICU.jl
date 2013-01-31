@@ -10,8 +10,6 @@ and adds `titlecase` and `foldcase`.
     julia> uppercase("testingß")
     "TESTINGß"
 
-    julia> require("ICU")
-
     julia> using ICU
 
     julia> uppercase("testingß")
@@ -49,11 +47,6 @@ This example prints the current local time in Los Angeles:
 
 Installation
 ------------
-
-    julia> load("pkg.jl")
-
-    julia> Pkg.init()
-    ...
 
     julia> Pkg.add("ICU")
 
