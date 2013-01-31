@@ -27,7 +27,7 @@ export foldcase,
 const iculib = dlopen(OS_NAME == :Darwin ? "libicucore" : "libicuuc")
 const iculibi18n = OS_NAME == :Darwin ? iculib : dlopen("libicui18n")
 
-for suffix in ["", ["_"*string(i) for i in 42:50]]
+for suffix in ["", ["_"*string(i) for i in 42:50], ["_"*string(i)[1]*"_"*string(i)[2] for i in 42:50]]
     if dlsym_e(iculib, "u_strToUpper"*suffix) != C_NULL
         for f in (:u_strFoldCase,
                   :u_strToLower,
