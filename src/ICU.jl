@@ -24,10 +24,24 @@ export foldcase,
        titlecase,
        uppercase
 
-const iculib = dlopen(OS_NAME == :Darwin ? "libicucore" : "libicuuc")
-const iculibi18n = OS_NAME == :Darwin ? iculib : dlopen("libicui18n")
+versions = 50:-1:40
 
-for suffix in ["", ["_"*string(i) for i in 42:50], ["_$(string(i)[1])_$(string(i)[2])" for i in 42:50]]
+if OS_NAME == :Windows
+    for v in versions
+        if dlopen_e("libicuuc$v") != C_NULL
+            global const iculib = dlopen("libicuuc$v")
+            global const iculibi18n = dlopen("libicuin$v")
+        end
+    end
+elseif OS_NAME == :Darwin
+    global const iculib = dlopen("libicucore")
+    global const iculibi18n = iculib
+else
+    global const iculib = dlopen("libicuuc")
+    global const iculibi18n = dlopen("libicui18n")
+end
+
+for suffix in ["", ["_$i" for i in versions], ["_$(string(i)[1])_$(string(i)[2])" for i in versions]]
     if dlsym_e(iculib, "u_strToUpper"*suffix) != C_NULL
         for f in (:u_strFoldCase,
                   :u_strToLower,
