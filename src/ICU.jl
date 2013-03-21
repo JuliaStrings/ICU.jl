@@ -28,9 +28,9 @@ versions = 50:-1:40
 
 if OS_NAME == :Windows
     for v in versions
-        if dlopen_e("libicuuc$v") != C_NULL
-            global const iculib = dlopen("libicuuc$v")
-            global const iculibi18n = dlopen("libicuin$v")
+        if dlopen_e("icuuc$v") != C_NULL
+            global const iculib = dlopen("icuuc$v")
+            global const iculibi18n = dlopen("icuin$v")
         end
     end
 elseif OS_NAME == :Darwin
