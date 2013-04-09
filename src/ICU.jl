@@ -52,6 +52,7 @@ for suffix in ["", ["_$i" for i in versions], ["_$(string(i)[1])_$(string(i)[2])
                   :ucal_close,
                   :ucal_get,
                   :ucal_getDefaultTimeZone,
+                  :ucal_getTimeZoneDisplayName,
                   :ucal_getMillis,
                   :ucal_getNow,
                   :ucal_open,
@@ -171,6 +172,7 @@ export ICUCalendar,
        getDefaultTimeZone,
        getMillis,
        getNow,
+       getTimeZoneDisplayName,
        set,
        setDate,
        setDateTime,
@@ -305,6 +307,16 @@ end
 function set(cal::ICUCalendar, field::Int32, val::Integer)
     ccall(dlsym(iculibi18n,ucal_set), Void,
         (Ptr{Void},Int32,Int32), cal.ptr, field, val)
+end
+
+function getTimeZoneDisplayName(cal::ICUCalendar)
+    bufsz = 64
+    buf = Array(Uint16, bufsz)
+    err = UErrorCode[0]
+    len = ccall(dlsym(iculibi18n,ucal_getTimeZoneDisplayName), Int32,
+                (Ptr{Void},Int32,Ptr{Uint8},Ptr{UChar},Int32,Ptr{UErrorCode}),
+                cal.ptr, 1, locale, buf, bufsz, err)
+    UTF16String(buf[1:len])
 end
 
 function getDefaultTimeZone()
