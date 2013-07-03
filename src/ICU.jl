@@ -24,7 +24,7 @@ export foldcase,
        titlecase,
        uppercase
 
-versions = 50:-1:40
+versions = 51:-1:40
 
 if OS_NAME == :Windows
     for v in versions
