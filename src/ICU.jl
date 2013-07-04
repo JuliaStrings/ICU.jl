@@ -27,11 +27,18 @@ export foldcase,
 versions = 51:-1:40
 
 if OS_NAME == :Windows
+    found = false
     for v in versions
-        if dlopen_e("icuuc$v") != C_NULL
-            global const iculib = dlopen("icuuc$v")
+        icuuc = dlopen_e("icuuc$v")
+        if icuuc != C_NULL
+            global const iculib = icuuc
             global const iculibi18n = dlopen("icuin$v")
+            found = true
+            break
         end
+    end
+    if !found
+        error("can't find ICU libraries")
     end
 elseif OS_NAME == :Darwin
     global const iculib = dlopen("libicucore")
