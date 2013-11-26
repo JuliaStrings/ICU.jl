@@ -13,10 +13,7 @@
 # after the locale is set to Turkish.
 #
 
-require("UTF16")
-
 module ICU
-using UTF16
 
 export foldcase,
        lowercase,
