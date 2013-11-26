@@ -109,12 +109,12 @@ for (a,b) in [(:lowercase,:u_strToLower),
     @eval begin
         function ($a)(s::UTF16String)
             src = s.data
-            destsiz = int32(2*numel(src))
+            destsiz = int32(2*length(src))
             dest = zeros(Uint16, destsiz)
             err = UErrorCode[0]
             n = ccall(dlsym(iculib,$b), Int32,
                 (Ptr{Uint16},Int32,Ptr{Uint16},Int32,Ptr{Uint8},Ptr{UErrorCode}),
-                dest, destsiz, src, numel(src), locale, err)
+                dest, destsiz, src, length(src), locale, err)
             return UTF16String(dest[1:n])
         end
     end
@@ -122,25 +122,25 @@ end
 
 function foldcase(s::UTF16String)
     src = s.data
-    destsiz = int32(2*numel(src))
+    destsiz = int32(2*length(src))
     dest = zeros(Uint16, destsiz)
     err = UErrorCode[0]
     n = ccall(dlsym(iculib,u_strFoldCase), Int32,
         (Ptr{Uint16},Int32,Ptr{Uint16},Int32,Uint32,Ptr{UErrorCode}),
-        dest, destsiz, src, numel(src), 0, err)
+        dest, destsiz, src, length(src), 0, err)
     return UTF16String(dest[1:n])
 end
 
 function titlecase(s::UTF16String)
     src = s.data
-    destsiz = int32(2*numel(src))
+    destsiz = int32(2*length(src))
     dest = zeros(Uint16, destsiz)
     err = UErrorCode[0]
     breakiter = ccall(dlsym(iculib,ucasemap_getBreakIterator),
         Ptr{Void}, (Ptr{Void},), casemap)
     n = ccall(dlsym(iculib,u_strToTitle), Int32,
         (Ptr{Uint16},Int32,Ptr{Uint16},Int32,Ptr{Void},Ptr{Uint8},Ptr{UErrorCode}),
-        dest, destsiz, src, numel(src), breakiter, locale, err)
+        dest, destsiz, src, length(src), breakiter, locale, err)
     return UTF16String(dest[1:n])
 end
 
@@ -150,7 +150,7 @@ for (a,b) in [(:foldcase,:ucasemap_utf8FoldCase),
               (:uppercase,:ucasemap_utf8ToUpper)]
     @eval begin
         function ($a)(src::UTF8String)
-            destsiz = int32(2*numel(src))
+            destsiz = int32(2*length(src))
             dest = zeros(Uint8, destsiz)
             err = UErrorCode[0]
             n = ccall(dlsym(iculib,$b), Int32,
