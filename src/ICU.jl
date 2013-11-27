@@ -22,7 +22,7 @@ export foldcase,
        set_locale,
        titlecase
 
-versions = 51:-1:40
+versions = 52:-1:40
 
 if OS_NAME == :Windows
     found = false
