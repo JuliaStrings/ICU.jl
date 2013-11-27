@@ -15,11 +15,12 @@
 
 module ICU
 
+import Base: lowercase,
+             uppercase
+
 export foldcase,
-       lowercase,
        set_locale,
-       titlecase,
-       uppercase
+       titlecase
 
 versions = 51:-1:40
 
