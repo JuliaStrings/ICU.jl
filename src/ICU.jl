@@ -15,7 +15,8 @@
 
 module ICU
 
-import Base: lowercase,
+import Base: cmp,
+             lowercase,
              uppercase
 
 export foldcase,
@@ -46,8 +47,11 @@ else
     global const iculibi18n = dlopen("libicui18n")
 end
 
-for suffix in ["", ["_$i" for i in versions], ["_$(string(i)[1])_$(string(i)[2])" for i in versions]]
+for (suffix,version) in [("",0);
+                         [("_$i",i) for i in versions];
+                         [("_$(string(i)[1])_$(string(i)[2])",i) for i in versions]]
     if dlsym_e(iculib, "u_strToUpper"*suffix) != C_NULL
+        @eval const version = $version
         for f in (:u_strFoldCase,
                   :u_strToLower,
                   :u_strToTitle,
@@ -72,6 +76,10 @@ for suffix in ["", ["_$i" for i in versions], ["_$(string(i)[1])_$(string(i)[2])
                   :ucasemap_utf8ToLower,
                   :ucasemap_utf8ToTitle,
                   :ucasemap_utf8ToUpper,
+                  :ucol_close,
+                  :ucol_open,
+                  :ucol_strcoll,
+                  :ucol_strcollUTF8,
                   :udat_close,
                   :udat_format,
                   :udat_open,
@@ -87,18 +95,24 @@ typealias UChar Uint16
 
 locale = C_NULL
 casemap = C_NULL
+collator = C_NULL
 
 function set_locale(s::Union(ByteString,Ptr{None}))
-    global casemap
+    global casemap, collator
     if casemap != C_NULL
         ccall(dlsym(iculib,ucasemap_close), Void, (Ptr{Void},), casemap)
+    end
+    if collator != C_NULL
+        ccall(dlsym(iculibi18n,ucol_close), Void, (Ptr{Void},), collator)
     end
     err = UErrorCode[0]
     casemap = ccall(dlsym(iculib,ucasemap_open), Ptr{Void},
         (Ptr{Uint8},Int32,Ptr{UErrorCode}), s, 0, err)
-    if casemap != C_NULL
-        global locale = s
-    end
+    err[1] > 0 && error("ICU: could not set casemap")
+    collator = ccall(dlsym(iculibi18n,ucol_open), Ptr{Void},
+        (Ptr{Uint8},Ptr{UErrorCode}), s, err)
+    err[1] > 0 && error("ICU: could not set collator")
+    global locale = s
 end
 set_locale(locale)
 
@@ -162,11 +176,21 @@ end
 foldcase(s::ASCIIString) = foldcase(utf8(s))
 titlecase(s::ASCIIString) = titlecase(utf8(s))
 
-function test_icustring()
-    @assert uppercase("testingß") == "TESTINGSS"
-    set_locale("tr")       # set locale to Turkish
-    @assert uppercase("testingß") == "TESTİNGSS"
+function cmp(a::UTF16String, b::UTF16String)
+    err = UErrorCode[0]
+    ccall(dlsym(iculibi18n,ucol_strcoll), Int32,
+        (Ptr{Void},Ptr{Uint16},Int32,Ptr{Uint16},Int32,Ptr{UErrorCode}),
+        collator, a.data, length(a.data), b.data, length(b.data), err)
 end
+
+#if version >= 50
+#function cmp(a::ByteString, b::ByteString)
+#    err = UErrorCode[0]
+#    ccall(dlsym(iculibi18n,ucol_strcollUTF8), Int32,
+#        (Ptr{Void},Ptr{Uint8},Int32,Ptr{Uint8},Int32,Ptr{UErrorCode}),
+#        collator, a.data, length(a.data), b.data, length(b.data), err)
+#end
+#end
 
 ## calendar ##
 
