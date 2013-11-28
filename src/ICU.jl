@@ -23,6 +23,17 @@ export foldcase,
        set_locale,
        titlecase
 
+export U_FAILURE,
+       U_SUCCESS,
+       UBRK_CHARACTER,
+       UBRK_LINE,
+       UBRK_SENTENCE,
+       UBRK_TITLE,
+       UBRK_WORD,
+       ubrk_close,
+       ubrk_next,
+       ubrk_open
+
 versions = 52:-1:40
 
 if OS_NAME == :Windows
@@ -56,6 +67,9 @@ for (suffix,version) in [("",0);
                   :u_strToLower,
                   :u_strToTitle,
                   :u_strToUpper,
+                  :_ubrk_close,
+                  :_ubrk_next,
+                  :_ubrk_open,
                   :ucal_add,
                   :ucal_clear,
                   :ucal_close,
@@ -93,6 +107,9 @@ end
 typealias UErrorCode Int32
 typealias UChar Uint16
 
+U_FAILURE(x::Int32) = x > 0
+U_SUCCESS(x::Int32) = x <= 0
+
 locale = C_NULL
 casemap = C_NULL
 collator = C_NULL
@@ -108,10 +125,10 @@ function set_locale(s::Union(ByteString,Ptr{None}))
     err = UErrorCode[0]
     casemap = ccall(dlsym(iculib,ucasemap_open), Ptr{Void},
         (Ptr{Uint8},Int32,Ptr{UErrorCode}), s, 0, err)
-    err[1] > 0 && error("ICU: could not set casemap")
+    U_FAILURE(err[1]) && error("ICU: could not set casemap")
     collator = ccall(dlsym(iculibi18n,ucol_open), Ptr{Void},
         (Ptr{Uint8},Ptr{UErrorCode}), s, err)
-    err[1] > 0 && error("ICU: could not set collator")
+    U_FAILURE(err[1]) && error("ICU: could not set collator")
     global locale = s
 end
 set_locale(locale)
@@ -191,6 +208,33 @@ end
 #        collator, a.data, length(a.data), b.data, length(b.data), err)
 #end
 #end
+
+## ubrk ##
+
+const UBRK_CHARACTER = int32(0)
+const UBRK_WORD = int32(1)
+const UBRK_LINE = int32(2)
+const UBRK_SENTENCE = int32(3)
+const UBRK_TITLE = int32(4)
+
+immutable UBreakIterator
+    p::Ptr{Void}
+end
+
+function ubrk_open(kind::Integer, loc::ASCIIString, s::Array{Uint16,1})
+    err = UErrorCode[0]
+    p = ccall(dlsym(iculib,_ubrk_open), Ptr{Void},
+            (Int32,Ptr{Uint8},Ptr{Uint16},Int32,Ptr{UErrorCode}),
+            kind, loc, s, length(s), err)
+    @assert U_SUCCESS(err[1])
+    UBreakIterator(p)
+end
+
+ubrk_close(bi::UBreakIterator) =
+    ccall(dlsym(iculib,_ubrk_close), Void, (Ptr{Void},), bi.p)
+
+ubrk_next(bi::UBreakIterator) =
+    ccall(dlsym(iculib,_ubrk_next), Int32, (Ptr{Void},), bi.p)
 
 ## calendar ##
 
