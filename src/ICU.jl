@@ -257,6 +257,7 @@ end
 
 import Base: cmp,
              convert,
+             endof,
              getindex,
              isequal,
              isless,
@@ -276,10 +277,11 @@ convert(::Type{UTF8String},  t::UnicodeText) = utf8(utf16(t.data))
 convert(::Type{UTF16String}, t::UnicodeText) = UTF16String(t.data)
 
 cmp(a::UnicodeText, b::UnicodeText) = ucol_strcoll(collator, a.data, b.data)
-
 # is this right?
 cmp(t::UnicodeText, s::String) = cmp(UTF16String(t.data), s)
 cmp(s::String, t::UnicodeText) = cmp(t, s)
+
+endof(t::UnicodeText) = length(t)
 
 isequal(a::UnicodeText, b::UnicodeText) = cmp(a,b) == 0
 isequal(a::UnicodeText, b::String)      = cmp(a,b) == 0
