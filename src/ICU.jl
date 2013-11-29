@@ -15,8 +15,7 @@
 
 module ICU
 
-import Base: cmp,
-             lowercase,
+import Base: lowercase,
              uppercase
 
 export foldcase,
@@ -193,22 +192,6 @@ end
 
 foldcase(s::ASCIIString) = foldcase(utf8(s))
 titlecase(s::ASCIIString) = titlecase(utf8(s))
-
-function cmp(a::UTF16String, b::UTF16String)
-    err = UErrorCode[0]
-    ccall(dlsym(iculibi18n,ucol_strcoll), Int32,
-        (Ptr{Void},Ptr{Uint16},Int32,Ptr{Uint16},Int32,Ptr{UErrorCode}),
-        collator, a.data, length(a.data), b.data, length(b.data), err)
-end
-
-#if version >= 50
-#function cmp(a::ByteString, b::ByteString)
-#    err = UErrorCode[0]
-#    ccall(dlsym(iculibi18n,ucol_strcollUTF8), Int32,
-#        (Ptr{Void},Ptr{Uint8},Int32,Ptr{Uint8},Int32,Ptr{UErrorCode}),
-#        collator, a.data, length(a.data), b.data, length(b.data), err)
-#end
-#end
 
 ## ubrk ##
 
