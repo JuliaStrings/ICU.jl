@@ -1,10 +1,15 @@
 ICU.jl: International Components for Unicode (ICU) wrapper for Julia
 ====================================================================
 
+Installation
+------------
+
+    julia> Pkg.add("ICU")
+
 Usage
 -----
 
-The ICU modules extends Julia's builtin `uppercase` and `lowercase` functions,
+The ICU module extends Julia's builtin `uppercase` and `lowercase` functions,
 and adds `titlecase` and `foldcase`.
 
     julia> uppercase("testingß")
@@ -25,28 +30,37 @@ Note that "ß" gets converted to "SS" after ICU is loaded,
 and "i" gets converted to "İ" (dotted capital I)
 after the locale is set to Turkish.
 
-Basic calendar support is also wrapped.
-This example prints the current local time in Los Angeles:
+Also included is the `UnicodeText` type.
 
-    julia> cal = ICUCalendar("America/Los_Angeles")
-    ICUCalendar(Ptr{Void} @0x00000000038536e0)
+```jlcon
+julia> noel1 = UnicodeText("noe\u0308l")
+"noël"
 
-    julia> setMillis(cal, getNow())
+julia> noel2 = UnicodeText("noël")
+"noël"
 
-    julia> fields = [UCAL_YEAR, UCAL_MONTH, UCAL_DATE,
-                     UCAL_HOUR_OF_DAY, UCAL_MINUTE, UCAL_SECOND];
+julia> noel1.data
+5-element Array{Uint16,1}:
+ 0x006e
+ 0x006f
+ 0x0065
+ 0x0308
+ 0x006c
 
-    julia> get(cal, fields)
-    6-element Int32 Array:
-     2012
-       10
-       22
-       17
-       45
-       49
+julia> noel2.data
+4-element Array{Uint16,1}:
+ 0x006e
+ 0x006f
+ 0x00eb
+ 0x006c
 
-Installation
-------------
+julia> noel1 == noel2
+true
 
-    julia> Pkg.add("ICU")
+julia> length(noel1) == 4 == length(noel2)
+true
+
+julia> noel1[1:3]
+"noë"
+```
 
