@@ -24,14 +24,23 @@ export foldcase,
 
 export U_FAILURE,
        U_SUCCESS,
+
+       # ubrk
        UBRK_CHARACTER,
        UBRK_LINE,
        UBRK_SENTENCE,
        UBRK_TITLE,
        UBRK_WORD,
+       UBreakIterator,
        ubrk_close,
        ubrk_next,
-       ubrk_open
+       ubrk_open,
+
+       # ucol
+       UCollator,
+       ucol_close,
+       ucol_open,
+       ucol_strcoll
 
 versions = 52:-1:40
 
@@ -121,15 +130,13 @@ function set_locale(s::LocaleString)
         ccall(dlsym(iculib,_ucasemap_close), Void, (Ptr{Void},), casemap)
     end
     if collator != C_NULL
-        ccall(dlsym(iculibi18n,ucol_close), Void, (Ptr{Void},), collator)
+        ucol_close(collator)
     end
     err = UErrorCode[0]
     casemap = ccall(dlsym(iculib,_ucasemap_open), Ptr{Void},
         (Ptr{Uint8},Int32,Ptr{UErrorCode}), s, 0, err)
     U_FAILURE(err[1]) && error("ICU: could not set casemap")
-    collator = ccall(dlsym(iculibi18n,ucol_open), Ptr{Void},
-        (Ptr{Uint8},Ptr{UErrorCode}), s, err)
-    U_FAILURE(err[1]) && error("ICU: could not set collator")
+    collator = ucol_open(s)
     global locale = s
 end
 
@@ -219,6 +226,32 @@ ubrk_close(bi::UBreakIterator) =
 
 ubrk_next(bi::UBreakIterator) =
     ccall(dlsym(iculib,_ubrk_next), Int32, (Ptr{Void},), bi.p)
+
+## ucol ##
+
+immutable UCollator
+    p::Ptr{Void}
+end
+
+ucol_close(c::UCollator) =
+    ccall(dlsym(iculibi18n,_ucol_close), Void, (Ptr{Void},), c.p)
+
+function ucol_open(loc::LocaleString)
+    err = UErrorCode[0]
+    p = ccall(dlsym(iculibi18n,_ucol_open), Ptr{Void},
+        (Ptr{Uint8},Ptr{UErrorCode}), loc, err)
+    U_SUCCESS(err[1]) || error("ICU: could not open collator for locale ", locale)
+    UCollator(p)
+end
+
+function ucol_strcoll(c::UCollator, a::Array{Uint16,1}, b::Array{Uint16,1})
+    err = UErrorCode[0]
+    o = ccall(dlsym(iculibi18n,_ucol_strcoll), Int32,
+            (Ptr{Void},Ptr{Uint16},Int32,Ptr{Uint16},Int32,Ptr{UErrorCode}),
+            c.p, a, length(a), b, length(b), err)
+    @assert U_SUCCESS(err[1])
+    o
+end
 
 ## calendar ##
 
