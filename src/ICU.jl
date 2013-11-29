@@ -114,7 +114,9 @@ locale = C_NULL
 casemap = C_NULL
 collator = C_NULL
 
-function set_locale(s::Union(ByteString,Ptr{None}))
+typealias LocaleString Union(ASCIIString,Ptr{None})
+
+function set_locale(s::LocaleString)
     global casemap, collator
     if casemap != C_NULL
         ccall(dlsym(iculib,_ucasemap_close), Void, (Ptr{Void},), casemap)
@@ -131,7 +133,6 @@ function set_locale(s::Union(ByteString,Ptr{None}))
     U_FAILURE(err[1]) && error("ICU: could not set collator")
     global locale = s
 end
-set_locale(locale)
 
 for (a,b) in [(:lowercase,:_u_strToLower),
               (:uppercase,:_u_strToUpper)]
@@ -221,7 +222,7 @@ immutable UBreakIterator
     p::Ptr{Void}
 end
 
-function ubrk_open(kind::Integer, loc::ASCIIString, s::Array{Uint16,1})
+function ubrk_open(kind::Integer, loc::LocaleString, s::Array{Uint16,1})
     err = UErrorCode[0]
     p = ccall(dlsym(iculib,_ubrk_open), Ptr{Void},
             (Int32,Ptr{Uint8},Ptr{Uint16},Int32,Ptr{UErrorCode}),
@@ -477,5 +478,9 @@ function test_icucalendar()
     s = format(df, getNow())
     show(s)
 end
+
+## init ##
+
+set_locale(locale)
 
 end # module
