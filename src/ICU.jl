@@ -253,6 +253,76 @@ function ucol_strcoll(c::UCollator, a::Array{Uint16,1}, b::Array{Uint16,1})
     o
 end
 
+## UnicodeText ##
+
+import Base: cmp,
+             convert,
+             getindex,
+             isequal,
+             isless,
+             length,
+             show
+
+export UnicodeText
+
+immutable UnicodeText
+    data::Array{Uint16,1}
+end
+
+UnicodeText(s::ByteString) = UnicodeText(utf16(s).data)
+UnicodeText(s::UTF16String) = UnicodeText(s.data)
+
+convert(::Type{UTF8String},  t::UnicodeText) = utf8(utf16(t.data))
+convert(::Type{UTF16String}, t::UnicodeText) = UTF16String(t.data)
+
+cmp(a::UnicodeText, b::UnicodeText) = ucol_strcoll(collator, a.data, b.data)
+
+# is this right?
+cmp(t::UnicodeText, s::String) = cmp(UTF16String(t.data), s)
+cmp(s::String, t::UnicodeText) = cmp(t, s)
+
+isequal(a::UnicodeText, b::UnicodeText) = cmp(a,b) == 0
+isequal(a::UnicodeText, b::String)      = cmp(a,b) == 0
+isequal(a::String, b::UnicodeText)      = cmp(a,b) == 0
+
+isless(a::UnicodeText, b::UnicodeText)  = cmp(a,b) < 0
+isless(a::UnicodeText, b::String)       = cmp(a,b) < 0
+isless(a::String, b::UnicodeText)       = cmp(a,b) < 0
+
+function length(t::UnicodeText)
+    bi = ubrk_open(UBRK_CHARACTER, locale, t.data)
+    n = 0
+    while ubrk_next(bi) > 0
+        n += 1
+    end
+    ubrk_close(bi)
+    n
+end
+
+getindex(t::UnicodeText, i::Int) = getindex(t, i:i)
+function getindex(t::UnicodeText, r::Range1{Int})
+    bi = ubrk_open(UBRK_CHARACTER, locale, t.data)
+    offset = 0
+    for i = 1:first(r)-1
+        offset = ubrk_next(bi)
+        offset > 0 || break
+    end
+    a = offset + 1
+    for i = 1:last(r)-first(r)+1
+        offset = ubrk_next(bi)
+        offset > 0 || break
+    end
+    b = offset
+    ubrk_close(bi)
+    SubString(UTF16String(t.data), a, b)
+end
+
+for f in (:foldcase,:lowercase,:titlecase,:uppercase)
+    @eval ($f)(t::UnicodeText) = UnicodeText(($f)(utf16(t)))
+end
+
+show(io::IO, t::UnicodeText) = show(io, UTF16String(t.data))
+
 ## calendar ##
 
 export ICUCalendar,
