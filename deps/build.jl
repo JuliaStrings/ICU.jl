@@ -2,8 +2,8 @@ using BinDeps
 
 @BinDeps.setup
 
-icu = library_dependency("icu", aliases=["libicuuc","libicucore","icuuc"])
-icui18n = library_dependency("icui18n",  aliases=["libicui18n","libicucore","icuin"])
+icu = library_dependency("icu", aliases=["libicuuc","libicucore","icuuc51"])
+icui18n = library_dependency("icui18n",  aliases=["libicui18n","libicucore","icui18n51"])
 
 @windows_only begin
     using WinRPM
