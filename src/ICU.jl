@@ -16,6 +16,7 @@
 module ICU
 
 include("../deps/deps.jl")
+include("../deps/versions.jl")
 
 import Base: lowercase,
              uppercase
@@ -43,8 +44,6 @@ export U_FAILURE,
        ucol_close,
        ucol_open,
        ucol_strcoll
-
-versions = 52:-1:40
 
 for (suffix,version) in [("",0);
                          [("_$i",i) for i in versions];
