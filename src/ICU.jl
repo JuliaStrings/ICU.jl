@@ -500,6 +500,7 @@ function ICUDateFormat(pattern::String, tz::String)
           (Int32, Int32, Ptr{Uint8}, Ptr{UChar}, Int32, Ptr{UChar}, Int32, Ptr{UErrorCode}),
           -2, -2, locale, tz_u16.data, length(tz_u16.data),
           pattern_u16.data, length(pattern_u16.data), err)
+    @assert err[1] == 0
     ICUDateFormat(p)
 end
 function ICUDateFormat(tstyle::Integer, dstyle::Integer, tz::String)
@@ -508,6 +509,7 @@ function ICUDateFormat(tstyle::Integer, dstyle::Integer, tz::String)
     p = ccall((_udat_open,iculibi18n), Ptr{Void},
           (Int32, Int32, Ptr{Uint8}, Ptr{UChar}, Int32, Ptr{UChar}, Int32, Ptr{UErrorCode}),
           tstyle, dstyle, locale, tz_u16.data, length(tz_u16.data), C_NULL, -1, err)
+    @assert err[1] == 0
     ICUDateFormat(p)
 end
 
@@ -521,6 +523,7 @@ function format(df::ICUDateFormat, millis::Float64)
     len = ccall((_udat_format,iculibi18n), Int32,
           (Ptr{Void}, Float64, Ptr{UChar}, Int32, Ptr{Void}, Ptr{UErrorCode}),
           df.ptr, millis, buf, buflen, C_NULL, err)
+    @assert err[1] == 0
     UTF16String(buf[1:len])
 end
 
