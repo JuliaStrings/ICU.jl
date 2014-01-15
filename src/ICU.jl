@@ -15,6 +15,8 @@
 
 module ICU
 
+using UTF16
+
 include("../deps/deps.jl")
 include("../deps/versions.jl")
 
