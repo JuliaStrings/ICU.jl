@@ -1,29 +1,13 @@
 #
 # ICU - International Components for Unicode
 # 
-# Example:
-#
-#   using ICU
-#   uppercase("testingß")  # "TESTINGSS"
-#   set_locale("tr")       # set locale to Turkish
-#   uppercase("testingß")  # "TESTİNGSS"
-#
-# Note that "ß" gets converted to "SS" in the first call to uppercase,
-# and "i" gets converted to "İ" (dotted capital I) in the second call
-# after the locale is set to Turkish.
-#
 
 module ICU
 
 include("../deps/deps.jl")
 include("../deps/versions.jl")
 
-import Base: lowercase,
-             uppercase
-
-export foldcase,
-       set_locale,
-       titlecase
+export set_locale
 
 export U_FAILURE,
        U_SUCCESS,
@@ -39,11 +23,23 @@ export U_FAILURE,
        ubrk_next,
        ubrk_open,
 
+       # ucasemap
+       ucasemap_utf8FoldCase,
+       ucasemap_utf8ToLower,
+       ucasemap_utf8ToTitle,
+       ucasemap_utf8ToUpper,
+
        # ucol
        UCollator,
        ucol_close,
        ucol_open,
-       ucol_strcoll
+       ucol_strcoll,
+
+       # ustring
+       u_strFoldCase,
+       u_strToLower,
+       u_strToUpper,
+       u_strToTitle
 
 for (suffix,version) in [("",0);
                          [("_$i",i) for i in versions];
@@ -114,28 +110,30 @@ function set_locale(s::LocaleString)
     err = UErrorCode[0]
     casemap = ccall((_ucasemap_open,iculib), Ptr{Void},
         (Ptr{Uint8},Int32,Ptr{UErrorCode}), s, 0, err)
-    U_FAILURE(err[1]) && error("ICU: could not set casemap")
+    U_FAILURE(err[1]) && error("could not set casemap")
     collator = ucol_open(s)
     global locale = s
 end
 
-for (a,b) in [(:lowercase,:_u_strToLower),
-              (:uppercase,:_u_strToUpper)]
+## ustring ##
+
+for f in [:u_strToLower, :u_strToUpper]
     @eval begin
-        function ($a)(s::UTF16String)
+        function ($f)(s::UTF16String)
             src = s.data
             destsiz = int32(2*length(src))
             dest = zeros(Uint16, destsiz)
             err = UErrorCode[0]
-            n = ccall(($b,iculib), Int32,
+            n = ccall(($(symbol(string('_',f))),iculib), Int32,
                 (Ptr{Uint16},Int32,Ptr{Uint16},Int32,Ptr{Uint8},Ptr{UErrorCode}),
                 dest, destsiz, src, length(src), locale, err)
+            U_FAILURE(err[1]) && error("failed to map case")
             return UTF16String(dest[1:n])
         end
     end
 end
 
-function foldcase(s::UTF16String)
+function u_strFoldCase(s::UTF16String)
     src = s.data
     destsiz = int32(2*length(src))
     dest = zeros(Uint16, destsiz)
@@ -143,10 +141,11 @@ function foldcase(s::UTF16String)
     n = ccall((_u_strFoldCase,iculib), Int32,
         (Ptr{Uint16},Int32,Ptr{Uint16},Int32,Uint32,Ptr{UErrorCode}),
         dest, destsiz, src, length(src), 0, err)
+    U_FAILURE(err[1]) && error("failed to map case")
     return UTF16String(dest[1:n])
 end
 
-function titlecase(s::UTF16String)
+function u_strToTitle(s::UTF16String)
     src = s.data
     destsiz = int32(2*length(src))
     dest = zeros(Uint16, destsiz)
@@ -156,28 +155,29 @@ function titlecase(s::UTF16String)
     n = ccall((_u_strToTitle,iculib), Int32,
         (Ptr{Uint16},Int32,Ptr{Uint16},Int32,Ptr{Void},Ptr{Uint8},Ptr{UErrorCode}),
         dest, destsiz, src, length(src), breakiter, locale, err)
+    U_FAILURE(err[1]) && error("failed to map case")
     return UTF16String(dest[1:n])
 end
 
-for (a,b) in [(:foldcase,:_ucasemap_utf8FoldCase),
-              (:lowercase,:_ucasemap_utf8ToLower),
-              (:titlecase,:_ucasemap_utf8ToTitle),
-              (:uppercase,:_ucasemap_utf8ToUpper)]
+## ucasemap ##
+
+for f in [:ucasemap_utf8FoldCase,
+          :ucasemap_utf8ToLower,
+          :ucasemap_utf8ToTitle,
+          :ucasemap_utf8ToUpper]
     @eval begin
-        function ($a)(src::UTF8String)
+        function ($f)(src::UTF8String)
             destsiz = int32(2*length(src))
             dest = zeros(Uint8, destsiz)
             err = UErrorCode[0]
-            n = ccall(($b,iculib), Int32,
+            n = ccall(($(symbol(string('_',f))),iculib), Int32,
                 (Ptr{Void},Ptr{Uint8},Int32,Ptr{Uint8},Int32,Ptr{UErrorCode}),
                 casemap, dest, destsiz, src, -1, err)
+            U_FAILURE(err[1]) && error("failed to map case")
             return utf8(dest[1:n])
         end
     end
 end
-
-foldcase(s::ASCIIString) = foldcase(utf8(s))
-titlecase(s::ASCIIString) = titlecase(utf8(s))
 
 ## ubrk ##
 
@@ -231,78 +231,6 @@ function ucol_strcoll(c::UCollator, a::Array{Uint16,1}, b::Array{Uint16,1})
     @assert U_SUCCESS(err[1])
     o
 end
-
-## UnicodeText ##
-
-import Base: cmp,
-             convert,
-             endof,
-             getindex,
-             isequal,
-             isless,
-             length,
-             show
-
-export UnicodeText
-
-immutable UnicodeText
-    data::Array{Uint16,1}
-end
-
-UnicodeText(s::ByteString) = UnicodeText(utf16(s).data)
-UnicodeText(s::UTF16String) = UnicodeText(s.data)
-
-convert(::Type{UTF8String},  t::UnicodeText) = utf8(utf16(t.data))
-convert(::Type{UTF16String}, t::UnicodeText) = UTF16String(t.data)
-
-cmp(a::UnicodeText, b::UnicodeText) = ucol_strcoll(collator, a.data, b.data)
-# is this right?
-cmp(t::UnicodeText, s::String) = cmp(UTF16String(t.data), s)
-cmp(s::String, t::UnicodeText) = cmp(t, s)
-
-endof(t::UnicodeText) = length(t)
-
-isequal(a::UnicodeText, b::UnicodeText) = cmp(a,b) == 0
-isequal(a::UnicodeText, b::String)      = cmp(a,b) == 0
-isequal(a::String, b::UnicodeText)      = cmp(a,b) == 0
-
-isless(a::UnicodeText, b::UnicodeText)  = cmp(a,b) < 0
-isless(a::UnicodeText, b::String)       = cmp(a,b) < 0
-isless(a::String, b::UnicodeText)       = cmp(a,b) < 0
-
-function length(t::UnicodeText)
-    bi = ubrk_open(UBRK_CHARACTER, locale, t.data)
-    n = 0
-    while ubrk_next(bi) > 0
-        n += 1
-    end
-    ubrk_close(bi)
-    n
-end
-
-getindex(t::UnicodeText, i::Int) = getindex(t, i:i)
-function getindex(t::UnicodeText, r::Range1{Int})
-    bi = ubrk_open(UBRK_CHARACTER, locale, t.data)
-    offset = 0
-    for i = 1:first(r)-1
-        offset = ubrk_next(bi)
-        offset > 0 || break
-    end
-    a = offset + 1
-    for i = 1:last(r)-first(r)+1
-        offset = ubrk_next(bi)
-        offset > 0 || break
-    end
-    b = offset
-    ubrk_close(bi)
-    SubString(UTF16String(t.data), a, b)
-end
-
-for f in (:foldcase,:lowercase,:titlecase,:uppercase)
-    @eval ($f)(t::UnicodeText) = UnicodeText(($f)(utf16(t)))
-end
-
-show(io::IO, t::UnicodeText) = show(io, UTF16String(t.data))
 
 ## calendar ##
 
