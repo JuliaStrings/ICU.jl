@@ -87,6 +87,18 @@ for (suffix,version) in [("",0);
     end
 end
 
+if dlsym_e(dlopen(iculibi18n), _ucal_open) == C_NULL
+    error("""
+          Uh oh, ICU library mismatch:
+
+            version    = $version
+            iculib     = $iculib
+            iculibi18n = $iculibi18n
+
+          Do you have multiple copies of ICU installed?
+          """)
+end
+
 typealias UErrorCode Int32
 typealias UChar Uint16
 
