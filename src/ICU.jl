@@ -4,9 +4,6 @@
 
 module ICU
 
-include("../deps/deps.jl")
-include("../deps/versions.jl")
-
 export set_locale
 
 export U_FAILURE,
@@ -41,10 +38,26 @@ export U_FAILURE,
        u_strToUpper,
        u_strToTitle
 
+include("../deps/deps.jl")
+include("../deps/versions.jl")
+
+@windows_only begin
+    # make sure versions match
+    v1 = int(iculib[end-1:end])
+    v2 = int(icui18nlib[end-1:end])
+    v = max(v1, v2)
+    if v1 < v2
+        global const iculib = string(iculib[end-1:end], v)
+    elseif v1 > v2
+        global const icui18nlib = string(icui18nlib[end-1:end], v)
+    end
+end
+
+dliculib = dlopen(iculib)
 for (suffix,version) in [("",0);
                          [("_$i",i) for i in versions];
                          [("_$(string(i)[1])_$(string(i)[2])",i) for i in versions]]
-    if dlsym_e(dlopen(iculib), "u_strToUpper"*suffix) != C_NULL
+    if dlsym_e(dliculib, "u_strToUpper"*suffix) != C_NULL
         @eval const version = $version
         for f in (:u_strFoldCase,
                   :u_strToLower,
@@ -85,18 +98,6 @@ for (suffix,version) in [("",0);
         end
         break
     end
-end
-
-if dlsym_e(dlopen(iculibi18n), _ucal_open) == C_NULL
-    error("""
-          Uh oh, ICU library mismatch:
-
-            version    = $version
-            iculib     = $iculib
-            iculibi18n = $iculibi18n
-
-          Do you have multiple copies of ICU installed?
-          """)
 end
 
 typealias UErrorCode Int32
