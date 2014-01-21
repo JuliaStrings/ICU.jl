@@ -44,12 +44,12 @@ include("../deps/versions.jl")
 @windows_only begin
     # make sure versions match
     v1 = int(iculib[end-1:end])
-    v2 = int(icui18nlib[end-1:end])
+    v2 = int(iculibi18n[end-1:end])
     v = max(v1, v2)
     if v1 < v2
         global const iculib = string(iculib[end-1:end], v)
     elseif v1 > v2
-        global const icui18nlib = string(icui18nlib[end-1:end], v)
+        global const iculibi18n = string(iculibi18n[end-1:end], v)
     end
 end
 
