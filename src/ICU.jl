@@ -47,9 +47,9 @@ include("../deps/versions.jl")
     v2 = int(iculibi18n[end-1:end])
     v = max(v1, v2)
     if v1 < v2
-        global const iculib = string(iculib[end-1:end], v)
+        global const iculib = string(iculib[1:end-2], v)
     elseif v1 > v2
-        global const iculibi18n = string(iculibi18n[end-1:end], v)
+        global const iculibi18n = string(iculibi18n[1:end-2], v)
     end
 end
 
