@@ -19,6 +19,7 @@ export U_FAILURE,
        ubrk_close,
        ubrk_next,
        ubrk_open,
+       ubrk_setUText,
 
        # ucasemap
        ucasemap_utf8FoldCase,
@@ -36,7 +37,12 @@ export U_FAILURE,
        u_strFoldCase,
        u_strToLower,
        u_strToUpper,
-       u_strToTitle
+       u_strToTitle,
+
+       # utext
+       UText,
+       utext_close,
+       utext_open
 
 include("../deps/deps.jl")
 include("../deps/versions.jl")
@@ -66,6 +72,7 @@ for (suffix,version) in [("",0);
                   :ubrk_close,
                   :ubrk_next,
                   :ubrk_open,
+                  :ubrk_setUText,
                   :ucal_add,
                   :ucal_clear,
                   :ucal_close,
@@ -93,7 +100,10 @@ for (suffix,version) in [("",0);
                   :udat_close,
                   :udat_format,
                   :udat_open,
-                  :udat_parse)
+                  :udat_parse,
+                  :utext_close,
+                  :utext_openUChars,
+                  :utext_openUTF8)
             @eval const $(symbol(string('_',f))) = $(string(f,suffix))
         end
         break
@@ -127,6 +137,32 @@ function set_locale(s::LocaleString)
     collator = ucol_open(s)
     global locale = s
 end
+
+## utext ##
+
+immutable UText
+    p::Ptr{Void}
+end
+
+function utext_open(s::UTF8String)
+    err = UErrorCode[0]
+    p = ccall((_utext_openUTF8,iculib), Ptr{Void},
+              (Ptr{Void},Ptr{Uint8},Int64,Ptr{UErrorCode}),
+              C_NULL, s, -1, err)
+    @assert U_SUCCESS(err[1])
+    UText(p)
+end
+
+function utext_open(s::UTF16String)
+    err = UErrorCode[0]
+    p = ccall((_utext_openUChars,iculib), Ptr{Void},
+              (Ptr{Void},Ptr{Uint16},Int64,Ptr{UErrorCode}),
+              C_NULL, s.data, length(s.data), err)
+    @assert U_SUCCESS(err[1])
+    UText(p)
+end
+
+utext_close(t::UText) = ccall((_utext_close,iculib), Void, (Ptr{Void},), t.p)
 
 ## ustring ##
 
@@ -194,6 +230,7 @@ end
 
 ## ubrk ##
 
+typealias UBreakIteratorType Int32
 const UBRK_CHARACTER = int32(0)
 const UBRK_WORD = int32(1)
 const UBRK_LINE = int32(2)
@@ -207,8 +244,17 @@ end
 function ubrk_open(kind::Integer, loc::LocaleString, s::Array{Uint16,1})
     err = UErrorCode[0]
     p = ccall((_ubrk_open,iculib), Ptr{Void},
-            (Int32,Ptr{Uint8},Ptr{Uint16},Int32,Ptr{UErrorCode}),
+            (UBreakIteratorType,Ptr{Uint8},Ptr{Uint16},Int32,Ptr{UErrorCode}),
             kind, loc, s, length(s), err)
+    @assert U_SUCCESS(err[1])
+    UBreakIterator(p)
+end
+
+function ubrk_open(kind::Integer, loc::LocaleString)
+    err = UErrorCode[0]
+    p = ccall((_ubrk_open,iculib), Ptr{Void},
+            (UBreakIteratorType,Ptr{Uint8},Ptr{Uint16},Int32,Ptr{UErrorCode}),
+            kind, loc, C_NULL, 0, err)
     @assert U_SUCCESS(err[1])
     UBreakIterator(p)
 end
@@ -218,6 +264,15 @@ ubrk_close(bi::UBreakIterator) =
 
 ubrk_next(bi::UBreakIterator) =
     ccall((_ubrk_next,iculib), Int32, (Ptr{Void},), bi.p)
+
+function ubrk_setUText(bi::UBreakIterator, t::UText)
+    err = UErrorCode[0]
+    ccall((_ubrk_setUText,iculib), Void,
+          (Ptr{Void},Ptr{Void},Ptr{UErrorCode}),
+          bi.p, t.p, err)
+    @assert U_SUCCESS(err[1])
+    nothing
+end
 
 ## ucol ##
 
@@ -236,6 +291,15 @@ function ucol_open(loc::LocaleString)
     UCollator(p)
 end
 
+function ucol_strcoll(c::UCollator, a::Array{Uint8,1}, b::Array{Uint8,1})
+    err = UErrorCode[0]
+    o = ccall((_ucol_strcollUTF8,iculibi18n), Int32,
+              (Ptr{Void},Ptr{Uint8},Int32,Ptr{Uint8},Int32,Ptr{UErrorCode}),
+              c.p, a, -1, b, -1, err)
+    @assert U_SUCCESS(err[1])
+    o
+end
+
 function ucol_strcoll(c::UCollator, a::Array{Uint16,1}, b::Array{Uint16,1})
     err = UErrorCode[0]
     o = ccall((_ucol_strcoll,iculibi18n), Int32,
@@ -244,6 +308,11 @@ function ucol_strcoll(c::UCollator, a::Array{Uint16,1}, b::Array{Uint16,1})
     @assert U_SUCCESS(err[1])
     o
 end
+
+ucol_strcoll(c::UCollator, a::UTF8String, b::UTF8String) =
+    ucol_strcoll(c, a.data, b.data)
+ucol_strcoll(c::UCollator, a::UTF16String, b::UTF16String) =
+    ucol_strcoll(c, a.data, b.data)
 
 ## calendar ##
 
