@@ -27,6 +27,13 @@ export U_FAILURE,
        ucasemap_utf8ToTitle,
        ucasemap_utf8ToUpper,
 
+       # ucnv
+       UConverter,
+       ucnv_close,
+       ucnv_convertEx,
+       ucnv_open,
+       ucnv_toUChars,
+
        # ucol
        UCollator,
        ucol_close,
@@ -93,6 +100,10 @@ for (suffix,version) in [("",0);
                   :ucasemap_utf8ToLower,
                   :ucasemap_utf8ToTitle,
                   :ucasemap_utf8ToUpper,
+                  :ucnv_close,
+                  :ucnv_convertEx,
+                  :ucnv_open,
+                  :ucnv_toUChars,
                   :ucol_close,
                   :ucol_open,
                   :ucol_strcoll,
@@ -110,11 +121,13 @@ for (suffix,version) in [("",0);
     end
 end
 
-typealias UErrorCode Int32
+typealias UBool Int8
 typealias UChar Uint16
+typealias UErrorCode Int32
 
 U_FAILURE(x::Int32) = x > 0
 U_SUCCESS(x::Int32) = x <= 0
+U_BUFFER_OVERFLOW_ERROR = 15
 
 locale = C_NULL
 casemap = C_NULL
@@ -272,6 +285,72 @@ function ubrk_setUText(bi::UBreakIterator, t::UText)
           bi.p, t.p, err)
     @assert U_SUCCESS(err[1])
     nothing
+end
+
+## ucnv ##
+
+immutable UConverter
+    p::Ptr{Void}
+end
+
+ucnv_close(c::UConverter) =
+    ccall((_ucnv_close,iculibi18n), Void, (Ptr{Void},), c.p)
+
+type UConverterPivot
+    buf::Array{UChar,1}
+    pos::Array{Ptr{UChar},1}
+
+    function UConverterPivot(n::Int)
+        buf = Array(UChar, n)
+        p = pointer(buf)
+        new(buf, [p,p])
+    end
+end
+
+function ucnv_convertEx(dstcnv::UConverter, srccnv::UConverter,
+                        dst::IOBuffer, src::IOBuffer, pivot::UConverterPivot,
+                        reset::Bool=false, flush::Bool=true)
+    p = Ptr{Uint8}[pointer(dst.data, position(dst)+1),
+                   pointer(src.data, position(src)+1)]
+    p0 = copy(p)
+    err = UErrorCode[0]
+    ccall((_ucnv_convertEx,iculibi18n), Void,
+          (Ptr{Void},Ptr{Void},
+           Ptr{Ptr{Uint8}},Ptr{Uint8},Ptr{Ptr{Uint8}},Ptr{Uint8},
+           Ptr{UChar},Ptr{Ptr{UChar}},Ptr{Ptr{UChar}},Ptr{UChar},
+           UBool,UBool,Ptr{UErrorCode}),
+          dstcnv.p, srccnv.p,
+          pointer(p, 1), pointer(dst.data, length(dst.data)+1),
+          pointer(p, 2), pointer(src.data, src.size+1),
+          pointer(pivot.buf, 1),
+          pointer(pivot.pos, 1),
+          pointer(pivot.pos, 2),
+          pointer(pivot.buf, length(pivot.buf)+1),
+          reset, flush, err)
+    dst.size += p[1] - p0[1]
+    dst.ptr += p[1] - p0[1]
+    src.ptr += p[2] - p0[2]
+    err[1] == U_BUFFER_OVERFLOW_ERROR && return true
+    @assert U_SUCCESS(err[1])
+    false
+end
+
+function ucnv_open(name::ASCIIString)
+    err = UErrorCode[0]
+    p = ccall((_ucnv_open,iculibi18n), Ptr{Void},
+              (Ptr{Uint8},Ptr{UErrorCode}), name, err)
+    U_SUCCESS(err[1]) || error("ICU: could not open converter ", name)
+    UConverter(p)
+end
+
+function ucnv_toUChars(cnv::UConverter, b::Array{Uint8,1})
+    u = Array(Uint16, 2*length(b))
+    err = UErrorCode[0]
+    n = ccall((_ucnv_toUChars,iculibi18n), Int32,
+              (Ptr{Void},Ptr{UChar},Int32,Ptr{Cchar},Int32,Ptr{UErrorCode}),
+              cnv.p, u, length(u), b, length(b), err)
+    U_SUCCESS(err[1]) || error("ICU: could not open converter ", name)
+    UTF16String(u[1:n])
 end
 
 ## ucol ##
