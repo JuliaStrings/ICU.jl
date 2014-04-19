@@ -42,6 +42,17 @@ export U_FAILURE,
        ucol_open,
        ucol_strcoll,
 
+       # ucsdet
+       UCharsetDetector,
+       UCharsetMatch,
+       ucsdet_close,
+       ucsdet_detect,
+       ucsdet_detectAll,
+       ucsdet_getName,
+       ucsdet_open,
+       ucsdet_setText,
+       UNoMatchingEncoding,
+
        # ustring
        u_strFoldCase,
        u_strToLower,
@@ -107,6 +118,12 @@ for (suffix,version) in [("",0);
                   :ucol_open,
                   :ucol_strcoll,
                   :ucol_strcollUTF8,
+                  :ucsdet_close,
+                  :ucsdet_detect,
+                  :ucsdet_detectAll,
+                  :ucsdet_getName,
+                  :ucsdet_open,
+                  :ucsdet_setText,
                   :udat_close,
                   :udat_format,
                   :udat_open,
@@ -441,6 +458,76 @@ function ucol_strcoll(c::UCollator, a::UTF16String, b::UTF16String)
               c.p, a.data, length(a.data)-1, b.data, length(b.data)-1, err)
     @assert U_SUCCESS(err[1])
     o
+end
+
+## ucsdet ##
+
+immutable UCharsetDetector
+    p::Ptr{Void}
+end
+
+immutable UCharsetMatch
+    p::Ptr{Void}
+end
+
+type UNoMatchingEncoding <: Exception
+end
+
+function ucsdet_open()
+    err = UErrorCode[0]
+    p = ccall((_ucsdet_open,iculibi18n), Ptr{Void},
+              (Ptr{UErrorCode},),
+              err)
+    U_SUCCESS(err[1]) || error("ICU: could not open charset detector")
+    UCharsetDetector(p)
+end
+
+function ucsdet_close(csd::UCharsetDetector)
+    ccall((_ucsdet_close,iculibi18n), Void,
+          (Ptr{Void},),
+          csd.p)
+end
+
+function ucsdet_setText(csd::UCharsetDetector, s::Array{Uint8,1})
+    err = UErrorCode[0]
+    ccall((_ucsdet_setText,iculibi18n), Void,
+          (Ptr{Void},Ptr{Uint8},Int32,Ptr{UErrorCode}),
+          csd.p, s, length(s), err)
+    U_SUCCESS(err[1]) || error("ICU: could not set charset detector text")
+    nothing
+end
+
+function ucsdet_detect(csd::UCharsetDetector)
+    err = UErrorCode[0]
+    p = ccall((_ucsdet_detect,iculibi18n), Ptr{Void},
+              (Ptr{Void},Ptr{UErrorCode}),
+              csd.p, err)
+    U_SUCCESS(err[1]) || error("ICU: could not detect encoding")
+    p != C_NULL || throw(UNoMatchingEncoding())
+    UCharsetMatch(p)
+end
+
+function ucsdet_detectAll(csd::UCharsetDetector)
+    err = UErrorCode[0]
+    n = Int32[0]
+    p = ccall((_ucsdet_detectAll,iculibi18n), Ptr{Ptr{Void}},
+              (Ptr{Void},Ptr{Int32},Ptr{UErrorCode}),
+              csd.p, n, err)
+    U_SUCCESS(err[1]) || error("ICU: could not detect encoding")
+    n[1] > 0 || throw(UNoMatchingEncoding())
+
+    [UCharsetMatch(x) for x in pointer_to_array(p, int(n[1]))]
+end
+
+function ucsdet_getName(csmatch::UCharsetMatch)
+    csmatch.p != C_NULL || throw(UndefRefError())
+
+    err = UErrorCode[0]
+    name = ccall((_ucsdet_getName,iculibi18n), Ptr{Uint8},
+                 (Ptr{Void},Ptr{UErrorCode}),
+                 csmatch.p, err)
+    U_SUCCESS(err[1]) || error("ICU: could not get name of matching encoding")
+    bytestring(name)::ASCIIString
 end
 
 ## calendar ##
