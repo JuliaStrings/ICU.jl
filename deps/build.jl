@@ -22,7 +22,7 @@ icui18n = library_dependency("icui18n", aliases=i18n_aliases)
     using WinRPM
     provides(WinRPM.RPM, "icu", [icu,icui18n], os=:Windows)
 end
-provides(AptGet, "libicu48", [icu, icui18n])
+provides(AptGet, {"libicu$v" => [icu,icui18n] for v in apt_versions})
 provides(Yum, "icu", [icu, icui18n])
 
 @BinDeps.install [:icu => :iculib, :icui18n => :iculibi18n]
