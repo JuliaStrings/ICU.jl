@@ -133,7 +133,7 @@ locale = C_NULL
 casemap = C_NULL
 collator = C_NULL
 
-typealias LocaleString Union(ASCIIString,Ptr{None})
+typealias LocaleString Union(ASCIIString,Ptr{Void})
 
 function set_locale(s::LocaleString)
     global casemap, collator
