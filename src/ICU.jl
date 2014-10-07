@@ -56,13 +56,10 @@ include("../deps/versions.jl")
 
 @windows_only begin
     # make sure versions match
-    v1 = int(iculib[end-1:end])
-    v2 = int(iculibi18n[end-1:end])
-    v = max(v1, v2)
-    if v1 < v2
-        global const iculib = string(iculib[1:end-2], v)
-    elseif v1 > v2
-        global const iculibi18n = string(iculibi18n[1:end-2], v)
+    v1 = last(matchall(r"\d{2}",iculib))
+    v2 = last(matchall(r"\d{2}",iculibi18n))
+    if v1 != v2
+        error("ICU library version mismatch -- please correct $(realpath("../deps/deps.jl"))")
     end
 end
 
