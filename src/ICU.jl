@@ -1,8 +1,10 @@
 #
 # ICU - International Components for Unicode
-# 
+#
 
 module ICU
+
+using Compat
 
 export set_locale
 
@@ -56,18 +58,18 @@ include("../deps/versions.jl")
 
 @windows_only begin
     # make sure versions match
-    v1 = last(matchall(r"\d{2}",iculib))
-    v2 = last(matchall(r"\d{2}",iculibi18n))
+    v1 = last(matchall(r"\d{2}", iculib))
+    v2 = last(matchall(r"\d{2}", iculibi18n))
     if v1 != v2
         error("ICU library version mismatch -- please correct $(realpath("../deps/deps.jl"))")
     end
 end
 
-dliculib = dlopen(iculib)
+dliculib = Libdl.dlopen(iculib)
 for (suffix,version) in [("",0);
                          [("_$i",i) for i in versions];
                          [("_$(string(i)[1])_$(string(i)[2])",i) for i in versions]]
-    if dlsym_e(dliculib, "u_strToUpper"*suffix) != C_NULL
+    if Libdl.dlsym_e(dliculib, "u_strToUpper"*suffix) != C_NULL
         @eval const version = $version
         for f in (:u_strFoldCase,
                   :u_strToLower,
@@ -119,7 +121,7 @@ for (suffix,version) in [("",0);
 end
 
 typealias UBool Int8
-typealias UChar Uint16
+typealias UChar UInt16
 typealias UErrorCode Int32
 
 U_FAILURE(x::Int32) = x > 0
@@ -132,20 +134,23 @@ collator = C_NULL
 
 typealias LocaleString Union(ASCIIString,Ptr{Void})
 
-function set_locale(s::LocaleString)
-    global casemap, collator
+function set_locale(loc::LocaleString)
+    global locale, casemap, collator
     if casemap != C_NULL
-        ccall((_ucasemap_close,iculib), Void, (Ptr{Void},), casemap)
+        ccall((_ucasemap_close, iculib), Void, (Ptr{Void},), casemap)
+        casemap = C_NULL
     end
     if collator != C_NULL
         ucol_close(collator)
+        collator = C_NULL
     end
     err = UErrorCode[0]
-    casemap = ccall((_ucasemap_open,iculib), Ptr{Void},
-        (Ptr{Uint8},Int32,Ptr{UErrorCode}), s, 0, err)
+    casemap = ccall((_ucasemap_open, iculib), Ptr{Void},
+                    (Ptr{UInt8}, Int32, Ptr{UErrorCode}),
+                    loc, 0, err)
     U_FAILURE(err[1]) && error("could not set casemap")
-    collator = ucol_open(s)
-    global locale = s
+    collator = ucol_open(loc)
+    locale = loc
 end
 
 ## utext ##
@@ -154,25 +159,30 @@ immutable UText
     p::Ptr{Void}
 end
 
-function utext_open(s::UTF8String)
+function utext_open(str::UTF8String)
     err = UErrorCode[0]
-    p = ccall((_utext_openUTF8,iculib), Ptr{Void},
-              (Ptr{Void},Ptr{Uint8},Int64,Ptr{UErrorCode}),
-              C_NULL, s, -1, err)
+    p = ccall((_utext_openUTF8, iculib), Ptr{Void},
+              (Ptr{Void}, Ptr{UInt8}, Int64, Ptr{UErrorCode}),
+              C_NULL, str.data, sizeof(str.data), err)
     @assert U_SUCCESS(err[1])
     UText(p)
 end
 
-function utext_open(s::UTF16String)
+function utext_open(str::UTF16String)
     err = UErrorCode[0]
-    p = ccall((_utext_openUChars,iculib), Ptr{Void},
-              (Ptr{Void},Ptr{Uint16},Int64,Ptr{UErrorCode}),
-              C_NULL, s.data, length(s.data)-1, err)
+    p = ccall((_utext_openUChars, iculib), Ptr{Void},
+              (Ptr{Void}, Ptr{UChar}, Int64, Ptr{UErrorCode}),
+              C_NULL, str.data, length(str.data)-1, err)
     @assert U_SUCCESS(err[1])
     UText(p)
 end
 
-utext_close(t::UText) = ccall((_utext_close,iculib), Void, (Ptr{Void},), t.p)
+function utext_close(t::UText)
+    if (t.p != C_NULL)
+        ccall((_utext_close, iculib), Void, (Ptr{Void},), t.p)
+        t.p = C_NULL
+    end
+end
 
 ## ustring ##
 
@@ -180,12 +190,12 @@ for f in [:u_strToLower, :u_strToUpper]
     @eval begin
         function ($f)(s::UTF16String)
             src = s.data
-            destsiz = int32(2*length(src))
-            dest = zeros(Uint16, destsiz)
+            destsiz = @compat Int32(2*length(src))
+            dest = zeros(UInt16, destsiz)
             err = UErrorCode[0]
-            n = ccall(($(symbol(string('_',f))),iculib), Int32,
-                (Ptr{Uint16},Int32,Ptr{Uint16},Int32,Ptr{Uint8},Ptr{UErrorCode}),
-                dest, destsiz, src, length(src)-1, locale, err)
+            n = ccall(($(symbol(string('_',f))), iculib), Int32,
+                      (Ptr{UChar}, Int32, Ptr{UChar}, Int32, Ptr{UInt8}, Ptr{UErrorCode}),
+                      dest, destsiz, src, length(src)-1, locale, err)
             U_FAILURE(err[1]) && error("failed to map case")
             return UTF16String(dest[1:n+1])
         end
@@ -194,26 +204,25 @@ end
 
 function u_strFoldCase(s::UTF16String)
     src = s.data
-    destsiz = int32(2*length(src))
-    dest = zeros(Uint16, destsiz)
+    destsiz = @compat Int32(2*length(src))
+    dest = zeros(UInt16, destsiz)
     err = UErrorCode[0]
-    n = ccall((_u_strFoldCase,iculib), Int32,
-        (Ptr{Uint16},Int32,Ptr{Uint16},Int32,Uint32,Ptr{UErrorCode}),
-        dest, destsiz, src, length(src)-1, 0, err)
+    n = ccall((_u_strFoldCase, iculib), Int32,
+              (Ptr{UChar}, Int32, Ptr{UChar}, Int32, UInt32, Ptr{UErrorCode}),
+              dest, destsiz, src, length(src)-1, 0, err)
     U_FAILURE(err[1]) && error("failed to map case")
     return UTF16String(dest[1:n+1])
 end
 
 function u_strToTitle(s::UTF16String)
     src = s.data
-    destsiz = int32(2*length(src))
-    dest = zeros(Uint16, destsiz)
+    destsiz = @compat Int32(2*length(src))
+    dest = zeros(UInt16, destsiz)
     err = UErrorCode[0]
-    breakiter = ccall((_ucasemap_getBreakIterator,iculib),
-        Ptr{Void}, (Ptr{Void},), casemap)
-    n = ccall((_u_strToTitle,iculib), Int32,
-        (Ptr{Uint16},Int32,Ptr{Uint16},Int32,Ptr{Void},Ptr{Uint8},Ptr{UErrorCode}),
-        dest, destsiz, src, length(src)-1, breakiter, locale, err)
+    breakiter = ccall((_ucasemap_getBreakIterator, iculib), Ptr{Void}, (Ptr{Void},), casemap)
+    n = ccall((_u_strToTitle, iculib), Int32,
+              (Ptr{UChar}, Int32, Ptr{UChar}, Int32, Ptr{Void}, Ptr{UInt8}, Ptr{UErrorCode}),
+              dest, destsiz, src, length(src)-1, breakiter, locale, err)
     U_FAILURE(err[1]) && error("failed to map case")
     return UTF16String(dest[1:n+1])
 end
@@ -226,12 +235,12 @@ for f in [:ucasemap_utf8FoldCase,
           :ucasemap_utf8ToUpper]
     @eval begin
         function ($f)(src::UTF8String)
-            destsiz = int32(2*length(src))
-            dest = zeros(Uint8, destsiz)
+            destsiz = @compat Int32(2*length(src))
+            dest = zeros(Cchar, destsiz)
             err = UErrorCode[0]
-            n = ccall(($(symbol(string('_',f))),iculib), Int32,
-                (Ptr{Void},Ptr{Uint8},Int32,Ptr{Uint8},Int32,Ptr{UErrorCode}),
-                casemap, dest, destsiz, src, -1, err)
+            n = ccall(($(symbol(string('_',f))), iculib), Int32,
+                      (Ptr{Void}, Ptr{Cchar}, Int32, Ptr{Cchar}, Int32, Ptr{UErrorCode}),
+                      casemap, dest, destsiz, src.data, sizeof(src.data), err)
             U_FAILURE(err[1]) && error("failed to map case")
             return utf8(dest[1:n])
         end
@@ -241,44 +250,49 @@ end
 ## ubrk ##
 
 typealias UBreakIteratorType Int32
-const UBRK_CHARACTER = int32(0)
-const UBRK_WORD = int32(1)
-const UBRK_LINE = int32(2)
-const UBRK_SENTENCE = int32(3)
-const UBRK_TITLE = int32(4)
+const UBRK_CHARACTER = @compat Int32(0)
+const UBRK_WORD = @compat Int32(1)
+const UBRK_LINE = @compat Int32(2)
+const UBRK_SENTENCE = @compat Int32(3)
+const UBRK_TITLE = @compat Int32(4)
 
-immutable UBreakIterator
+type UBreakIterator
     p::Ptr{Void}
+    UBreakIterator(p::Ptr) = (self = new(p); finalizer(self, close); self)
 end
 
-function ubrk_open(kind::Integer, loc::LocaleString, s::Array{Uint16,1})
+function ubrk_open(kind::Integer, loc::LocaleString, s::Vector{UInt16})
     err = UErrorCode[0]
-    p = ccall((_ubrk_open,iculib), Ptr{Void},
-            (UBreakIteratorType,Ptr{Uint8},Ptr{Uint16},Int32,Ptr{UErrorCode}),
-            kind, loc, s, length(s), err)
+    p = ccall((_ubrk_open, iculib), Ptr{Void},
+              (UBreakIteratorType, Ptr{UInt8}, Ptr{UChar}, Int32, Ptr{UErrorCode}),
+              kind, loc, s, length(s), err)
     @assert U_SUCCESS(err[1])
     UBreakIterator(p)
 end
 
 function ubrk_open(kind::Integer, loc::LocaleString)
     err = UErrorCode[0]
-    p = ccall((_ubrk_open,iculib), Ptr{Void},
-            (UBreakIteratorType,Ptr{Uint8},Ptr{Uint16},Int32,Ptr{UErrorCode}),
-            kind, loc, C_NULL, 0, err)
+    p = ccall((_ubrk_open, iculib), Ptr{Void},
+              (UBreakIteratorType, Ptr{UInt8}, Ptr{UChar}, Int32, Ptr{UErrorCode}),
+              kind, loc, C_NULL, 0, err)
     @assert U_SUCCESS(err[1])
     UBreakIterator(p)
 end
 
-ubrk_close(bi::UBreakIterator) =
-    ccall((_ubrk_close,iculib), Void, (Ptr{Void},), bi.p)
+function ubrk_close(bi::UBreakIterator)
+    if bi.p != C_NULL
+        ccall((_ubrk_close, iculib), Void, (Ptr{Void},), bi.p)
+        bi.p = C_NULL
+    end
+end
 
 ubrk_next(bi::UBreakIterator) =
-    ccall((_ubrk_next,iculib), Int32, (Ptr{Void},), bi.p)
+    ccall((_ubrk_next, iculib), Int32, (Ptr{Void},), bi.p)
 
 function ubrk_setUText(bi::UBreakIterator, t::UText)
     err = UErrorCode[0]
-    ccall((_ubrk_setUText,iculib), Void,
-          (Ptr{Void},Ptr{Void},Ptr{UErrorCode}),
+    ccall((_ubrk_setUText, iculib), Void,
+          (Ptr{Void}, Ptr{Void}, Ptr{UErrorCode}),
           bi.p, t.p, err)
     @assert U_SUCCESS(err[1])
     nothing
@@ -286,16 +300,17 @@ end
 
 ## ucnv ##
 
-immutable UConverter
+type UConverter
     p::Ptr{Void}
+    UConverter(p::Ptr) = (self = new(p); finalizer(self, close); self)
 end
 
 ucnv_close(c::UConverter) =
-    ccall((_ucnv_close,iculibi18n), Void, (Ptr{Void},), c.p)
+    ccall((_ucnv_close, iculibi18n), Void, (Ptr{Void},), c.p)
 
 type UConverterPivot
-    buf::Array{UChar,1}
-    pos::Array{Ptr{UChar},1}
+    buf::Vector{UChar}
+    pos::Vector{Ptr{UChar}}
 
     function UConverterPivot(n::Int)
         buf = Array(UChar, n)
@@ -307,15 +322,15 @@ end
 function ucnv_convertEx(dstcnv::UConverter, srccnv::UConverter,
                         dst::IOBuffer, src::IOBuffer, pivot::UConverterPivot,
                         reset::Bool=false, flush::Bool=true)
-    p = Ptr{Uint8}[pointer(dst.data, position(dst)+1),
+    p = Ptr{UInt8}[pointer(dst.data, position(dst)+1),
                    pointer(src.data, position(src)+1)]
     p0 = copy(p)
     err = UErrorCode[0]
-    ccall((_ucnv_convertEx,iculibi18n), Void,
-          (Ptr{Void},Ptr{Void},
-           Ptr{Ptr{Uint8}},Ptr{Uint8},Ptr{Ptr{Uint8}},Ptr{Uint8},
-           Ptr{UChar},Ptr{Ptr{UChar}},Ptr{Ptr{UChar}},Ptr{UChar},
-           UBool,UBool,Ptr{UErrorCode}),
+    ccall((_ucnv_convertEx, iculibi18n), Void,
+          (Ptr{Void}, Ptr{Void},
+           Ptr{Ptr{UInt8}}, Ptr{UInt8}, Ptr{Ptr{UInt8}}, Ptr{UInt8},
+           Ptr{UChar}, Ptr{Ptr{UChar}}, Ptr{Ptr{UChar}}, Ptr{UChar},
+           UBool, UBool, Ptr{UErrorCode}),
           dstcnv.p, srccnv.p,
           pointer(p, 1), pointer(dst.data, length(dst.data)+1),
           pointer(p, 2), pointer(src.data, src.size+1),
@@ -334,17 +349,18 @@ end
 
 function ucnv_open(name::ASCIIString)
     err = UErrorCode[0]
-    p = ccall((_ucnv_open,iculibi18n), Ptr{Void},
-              (Ptr{Uint8},Ptr{UErrorCode}), name, err)
+    p = ccall((_ucnv_open, iculibi18n), Ptr{Void},
+              (Cstring, Ptr{UErrorCode}),
+              name, err)
     U_SUCCESS(err[1]) || error("ICU: could not open converter ", name)
     UConverter(p)
 end
 
-function ucnv_toUChars(cnv::UConverter, b::Array{Uint8,1})
-    u = zeros(Uint16, 2*length(b))
+function ucnv_toUChars(cnv::UConverter, b::Vector{UInt8})
+    u = zeros(UInt16, 2*length(b))
     err = UErrorCode[0]
-    n = ccall((_ucnv_toUChars,iculibi18n), Int32,
-              (Ptr{Void},Ptr{UChar},Int32,Ptr{Cchar},Int32,Ptr{UErrorCode}),
+    n = ccall((_ucnv_toUChars, iculibi18n), Int32,
+              (Ptr{Void}, Ptr{UChar}, Int32, Ptr{UInt8}, Int32, Ptr{UErrorCode}),
               cnv.p, u, length(u), b, length(b), err)
     U_SUCCESS(err[1]) || error("ICU: could not open converter ", name)
     UTF16String(u[1:n+1])
@@ -352,35 +368,41 @@ end
 
 ## ucol ##
 
-immutable UCollator
+type UCollator
     p::Ptr{Void}
+    UCollator(p::Ptr) = (self = new(p); finalizer(self, close); self)
 end
 
-ucol_close(c::UCollator) =
-    ccall((_ucol_close,iculibi18n), Void, (Ptr{Void},), c.p)
+function ucol_close(c::UCollator)
+    if c.p != C_NULL
+        ccall((_ucol_close, iculibi18n), Void, (Ptr{Void},), c.p)
+        c.p = C_NULL
+    end
+end
 
 function ucol_open(loc::LocaleString)
     err = UErrorCode[0]
-    p = ccall((_ucol_open,iculibi18n), Ptr{Void},
-        (Ptr{Uint8},Ptr{UErrorCode}), loc, err)
+    p = ccall((_ucol_open, iculibi18n), Ptr{Void},
+              (Ptr{UInt8}, Ptr{UErrorCode}),
+              loc, err)
     U_SUCCESS(err[1]) || error("ICU: could not open collator for locale ", locale)
     UCollator(p)
 end
 
 function ucol_strcoll(c::UCollator, a::UTF8String, b::UTF8String)
     err = UErrorCode[0]
-    o = ccall((_ucol_strcollUTF8,iculibi18n), Int32,
-              (Ptr{Void},Ptr{Uint8},Int32,Ptr{Uint8},Int32,Ptr{UErrorCode}),
-              c.p, a, -1, b, -1, err)
+    o = ccall((_ucol_strcollUTF8, iculibi18n), Int32,
+              (Ptr{Void}, Ptr{UInt8}, Int32, Ptr{UInt8}, Int32, Ptr{UErrorCode}),
+              c.p, a.data, sizeof(a.data), b.data, sizeof(b.data), err)
     @assert U_SUCCESS(err[1])
     o
 end
 
 function ucol_strcoll(c::UCollator, a::UTF16String, b::UTF16String)
     err = UErrorCode[0]
-    o = ccall((_ucol_strcoll,iculibi18n), Int32,
-            (Ptr{Void},Ptr{Uint16},Int32,Ptr{Uint16},Int32,Ptr{UErrorCode}),
-            c.p, a.data, length(a.data)-1, b.data, length(b.data)-1, err)
+    o = ccall((_ucol_strcoll, iculibi18n), Int32,
+              (Ptr{Void}, Ptr{UChar}, Int32, Ptr{UChar}, Int32, Ptr{UErrorCode}),
+              c.p, a.data, length(a.data)-1, b.data, length(b.data)-1, err)
     @assert U_SUCCESS(err[1])
     o
 end
@@ -449,7 +471,7 @@ for (i,a) in enumerate([
         :UCAL_MILLISECONDS_IN_DAY,
         :UCAL_IS_LEAP_MONTH
     ])
-    @eval const $a = int32($i - 1)
+    @eval const $a = @compat Int32($i - 1)
 end
 
 typealias UDate Float64
@@ -459,94 +481,102 @@ type ICUCalendar
     ICUCalendar(p::Ptr) = (self = new(p); finalizer(self, close); self)
 end
 
-function ICUCalendar(timezone::String)
-    tz_u16 = utf16(timezone)
+ICUCalendar(timezone::AbstractString) = ICUCalendar(utf16(timezone))
+function ICUCalendar(tz::UTF16String)
     err = UErrorCode[0]
-    p = ccall((_ucal_open,iculibi18n), Ptr{Void},
-        (Ptr{Uint16},Int32,Ptr{Uint8},Int32,Ptr{UErrorCode}),
-        tz_u16.data, length(tz_u16.data)-1, locale, 0, err)
+    p = ccall((_ucal_open, iculibi18n), Ptr{Void},
+              (Ptr{UChar}, Int32, Ptr{UInt8}, Int32, Ptr{UErrorCode}),
+              tz.data, length(tz.data)-1, locale, 0, err)
     ICUCalendar(p)
 end
 function ICUCalendar()
     err = UErrorCode[0]
-    p = ccall((_ucal_open,iculibi18n), Ptr{Void},
-        (Ptr{Uint16},Int32,Ptr{Uint8},Int32,Ptr{UErrorCode}),
-        C_NULL, -1, locale, 0, err)
+    p = ccall((_ucal_open, iculibi18n), Ptr{Void},
+              (Ptr{UChar}, Int32, Ptr{UInt8}, Int32, Ptr{UErrorCode}),
+              C_NULL, 0, locale, 0, err)
     ICUCalendar(p)
 end
 
-close(cal::ICUCalendar) =
-    ccall((_ucal_close,iculibi18n), Void, (Ptr{Void},), cal.ptr)
+function close(cal::ICUCalendar)
+    if cal.ptr != C_NULL
+        ccall((_ucal_close, iculibi18n), Void, (Ptr{Void},), cal.ptr)
+        cal.ptr = C_NULL
+    end
+end
 
-getNow() = ccall((_ucal_getNow,iculibi18n), UDate, ())
+getNow() = ccall((_ucal_getNow, iculibi18n), UDate, ())
 
 function getMillis(cal::ICUCalendar)
     err = UErrorCode[0]
-    ccall((_ucal_getMillis,iculibi18n), UDate, (Ptr{Void},Ptr{UErrorCode}),
-        cal.ptr, err)
+    ccall((_ucal_getMillis, iculibi18n), UDate, (Ptr{Void}, Ptr{UErrorCode}), cal.ptr, err)
 end
 
 function setMillis(cal::ICUCalendar, millis::UDate)
     err = UErrorCode[0]
-    ccall((_ucal_setMillis,iculibi18n), Void, (Ptr{Void},UDate,Ptr{UErrorCode}),
-        cal.ptr, millis, err)
+    ccall((_ucal_setMillis, iculibi18n), Void,
+          (Ptr{Void}, UDate, Ptr{UErrorCode}),
+          cal.ptr, millis, err)
 end
 
 function setDate(cal::ICUCalendar, y::Integer, m::Integer, d::Integer)
     err = UErrorCode[0]
-    ccall((_ucal_setDate,iculibi18n), Void,
-        (Ptr{Void},Int32,Int32,Int32,Ptr{UErrorCode}),
-        cal.ptr, y, m-1, d, err)
+    ccall((_ucal_setDate, iculibi18n), Void,
+          (Ptr{Void}, Int32, Int32, Int32, Ptr{UErrorCode}),
+          cal.ptr, y, m-1, d, err)
 end
 
 function setDateTime(cal::ICUCalendar, y::Integer, mo::Integer, d::Integer, h::Integer, mi::Integer, s::Integer)
     err = UErrorCode[0]
-    ccall((_ucal_setDateTime,iculibi18n), Void,
-        (Ptr{Void},Int32,Int32,Int32,Int32,Int32,Int32,Ptr{UErrorCode}),
-        cal.ptr, y, mo-1, d, h, mi, s, err)
+    ccall((_ucal_setDateTime, iculibi18n), Void,
+          (Ptr{Void}, Int32, Int32, Int32, Int32, Int32, Int32, Ptr{UErrorCode}),
+          cal.ptr, y, mo-1, d, h, mi, s, err)
 end
 
 function clear(cal::ICUCalendar)
     err = UErrorCode[0]
-    ccall((_ucal_clear,iculibi18n), Void, (Ptr{Void},Ptr{UErrorCode}), cal.ptr, err)
+    ccall((_ucal_clear, iculibi18n), Void,
+          (Ptr{Void}, Ptr{UErrorCode}),
+          cal.ptr, err)
 end
 
 function get(cal::ICUCalendar, field::Int32)
     err = UErrorCode[0]
-    ccall((_ucal_get,iculibi18n), Int32,
-        (Ptr{Void},Int32,Ptr{UErrorCode}),
-        cal.ptr, field, err)
+    ccall((_ucal_get, iculibi18n), Int32,
+          (Ptr{Void},Int32,Ptr{UErrorCode}),
+          cal.ptr, field, err)
 end
-get(cal::ICUCalendar, fields::Array{Int32,1}) = [get(cal,f) for f in fields]
+get(cal::ICUCalendar, fields::Vector{Int32}) = [get(cal,f) for f in fields]
 
 function add(cal::ICUCalendar, field::Int32, amount::Integer)
     err = UErrorCode[0]
-    ccall((_ucal_add,iculibi18n), Int32,
-        (Ptr{Void},Int32,Int32,Ptr{UErrorCode}),
-        cal.ptr, field, amount, err)
+    ccall((_ucal_add, iculibi18n), Int32,
+          (Ptr{Void},Int32,Int32,Ptr{UErrorCode}),
+          cal.ptr, field, amount, err)
 end
 
 function set(cal::ICUCalendar, field::Int32, val::Integer)
-    ccall((_ucal_set,iculibi18n), Void,
-        (Ptr{Void},Int32,Int32), cal.ptr, field, val)
+             ccall((_ucal_set, iculibi18n), Void,
+             (Ptr{Void}, Int32, Int32),
+             cal.ptr, field, val)
 end
 
 function getTimeZoneDisplayName(cal::ICUCalendar)
     bufsz = 64
-    buf = zeros(Uint16, bufsz)
+    buf = zeros(UInt16, bufsz)
     err = UErrorCode[0]
-    len = ccall((_ucal_getTimeZoneDisplayName,iculibi18n), Int32,
-                (Ptr{Void},Int32,Ptr{Uint8},Ptr{UChar},Int32,Ptr{UErrorCode}),
+    len = ccall((_ucal_getTimeZoneDisplayName, iculibi18n), Int32,
+                (Ptr{Void}, Int32, Ptr{UInt8}, Ptr{UChar}, Int32, Ptr{UErrorCode}),
                 cal.ptr, 1, locale, buf, bufsz, err)
     UTF16String(buf[1:len+1])
 end
 
 function getDefaultTimeZone()
     bufsz = 64
-    buf = zeros(Uint16, bufsz)
+    buf = zeros(UInt16, bufsz)
     err = UErrorCode[0]
-    len = ccall((_ucal_getDefaultTimeZone,iculibi18n), Int32,
-                (Ptr{UChar},Int32,Ptr{UErrorCode}), buf, bufsz, err)
+    len = ccall((_ucal_getDefaultTimeZone, iculibi18n), Int32,
+                (Ptr{UChar}, Int32, Ptr{UErrorCode}),
+                buf, bufsz, err)
     UTF16String(buf[1:len+1])
 end
 
@@ -561,57 +591,57 @@ export UDAT_NONE,
        UDAT_SHORT,
        UDAT_RELATIVE
 
-const UDAT_NONE     = int32(-1)
-const UDAT_FULL     = int32(0)
-const UDAT_LONG     = int32(1)
-const UDAT_MEDIUM   = int32(2)
-const UDAT_SHORT    = int32(3)
-const UDAT_RELATIVE = int32(1<<7)
+const UDAT_NONE     = @compat Int32(-1)
+const UDAT_FULL     = @compat Int32(0)
+const UDAT_LONG     = @compat Int32(1)
+const UDAT_MEDIUM   = @compat Int32(2)
+const UDAT_SHORT    = @compat Int32(3)
+const UDAT_RELATIVE = @compat Int32(1<<7)
 
 type ICUDateFormat
     ptr::Ptr{Void}
     ICUDateFormat(p::Ptr) = (self = new(p); finalizer(self, close); self)
 end
 
-function ICUDateFormat(pattern::String, tz::String)
-    pattern_u16 = utf16(pattern)
-    tz_u16 = utf16(tz)
+ICUDateFormat(pattern::AbstractString, tz::AbstractString) = ICUDateFormat(utf16(pattern), utf16(tz))
+function ICUDateFormat(pattern::UTF16String, tz::UTF16String)
     err = UErrorCode[0]
-    p = ccall((_udat_open,iculibi18n), Ptr{Void},
-          (Int32, Int32, Ptr{Uint8}, Ptr{UChar}, Int32, Ptr{UChar}, Int32, Ptr{UErrorCode}),
-          -2, -2, locale, tz_u16.data, length(tz_u16.data)-1,
-          pattern_u16.data, length(pattern_u16.data)-1, err)
+    p = ccall((_udat_open, iculibi18n), Ptr{Void},
+              (Int32, Int32, Ptr{UInt8}, Ptr{UChar}, Int32, Ptr{UChar}, Int32, Ptr{UErrorCode}),
+              -2, -2, locale, tz.data, length(tz.data)-1,
+              pattern.data, length(pattern.data)-1, err)
     U_FAILURE(err[1]) && error("bad date format")
     ICUDateFormat(p)
 end
-function ICUDateFormat(tstyle::Integer, dstyle::Integer, tz::String)
-    tz_u16 = utf16(tz)
+
+ICUDateFormat(tstyle::Integer, dstyle::Integer, tz::AbstractString) = ICUDateFormat(tstyle, dstyle, utf16(tz))
+function ICUDateFormat(tstyle::Integer, dstyle::Integer, tz::UTF16String)
     err = UErrorCode[0]
-    p = ccall((_udat_open,iculibi18n), Ptr{Void},
-          (Int32, Int32, Ptr{Uint8}, Ptr{UChar}, Int32, Ptr{UChar}, Int32, Ptr{UErrorCode}),
-          tstyle, dstyle, locale, tz_u16.data, length(tz_u16.data)-1, C_NULL, -1, err)
+    p = ccall((_udat_open, iculibi18n), Ptr{Void},
+              (Int32, Int32, Ptr{UInt8}, Ptr{UChar}, Int32, Ptr{UChar}, Int32, Ptr{UErrorCode}),
+              tstyle, dstyle, locale, tz.data, length(tz.data)-1, C_NULL, 0, err)
     U_FAILURE(err[1]) && error("bad date format")
     ICUDateFormat(p)
 end
 
 close(df::ICUDateFormat) =
-    ccall((_udat_close,iculibi18n), Void, (Ptr{Void},), df.ptr)
+    ccall((_udat_close, iculibi18n), Void, (Ptr{Void},), df.ptr)
 
 function format(df::ICUDateFormat, millis::Float64)
     err = UErrorCode[0]
     buflen = 64
     buf = zeros(UChar, buflen)
-    len = ccall((_udat_format,iculibi18n), Int32,
-          (Ptr{Void}, Float64, Ptr{UChar}, Int32, Ptr{Void}, Ptr{UErrorCode}),
-          df.ptr, millis, buf, buflen, C_NULL, err)
+    len = ccall((_udat_format, iculibi18n), Int32,
+                (Ptr{Void}, Float64, Ptr{UChar}, Int32, Ptr{Void}, Ptr{UErrorCode}),
+                df.ptr, millis, buf, buflen, C_NULL, err)
     U_FAILURE(err[1]) && error("failed to format time")
     UTF16String(buf[1:len+1])
 end
 
-function parse(df::ICUDateFormat, s::String)
-    s16 = utf16(s)
+parse(df::ICUDateFormat, s::AbstractString) = parse(df, utf16(s))
+function parse(df::ICUDateFormat, s16::UTF16String)
     err = UErrorCode[0]
-    ret = ccall((_udat_parse,iculibi18n), Float64,
+    ret = ccall((_udat_parse, iculibi18n), Float64,
                 (Ptr{Void}, Ptr{UChar}, Int32, Ptr{Int32}, Ptr{UErrorCode}),
                 df.ptr, s16.data, length(s16.data)-1, C_NULL, err)
     U_FAILURE(err[1]) && error("failed to parse string")
