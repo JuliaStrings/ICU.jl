@@ -190,12 +190,21 @@ for f in [:u_strToLower, :u_strToUpper]
     @eval begin
         function ($f)(s::UTF16String)
             src = s.data
-            destsiz = @compat Int32(2*length(src))
+            destsiz = @compat Int32(length(src))
             dest = zeros(UInt16, destsiz)
             err = UErrorCode[0]
             n = ccall(($(symbol(string('_',f))), iculib), Int32,
                       (Ptr{UChar}, Int32, Ptr{UChar}, Int32, Ptr{UInt8}, Ptr{UErrorCode}),
                       dest, destsiz, src, length(src)-1, locale, err)
+            # Retry with large enough buffer if got buffer overflow
+            if err[1] == U_BUFFER_OVERFLOW_ERROR
+                err[1] = 0
+                destsiz = n + 1
+                dest = zeros(UInt16, destsiz)
+                n = ccall(($(symbol(string('_',f))), iculib), Int32,
+                          (Ptr{UChar}, Int32, Ptr{UChar}, Int32, Ptr{UInt8}, Ptr{UErrorCode}),
+                          dest, destsiz, src, length(src)-1, locale, err)
+            end
             U_FAILURE(err[1]) && error("failed to map case")
             return UTF16String(dest[1:n+1])
         end
@@ -204,25 +213,43 @@ end
 
 function u_strFoldCase(s::UTF16String)
     src = s.data
-    destsiz = @compat Int32(2*length(src))
+    destsiz = @compat Int32(length(src))
     dest = zeros(UInt16, destsiz)
     err = UErrorCode[0]
     n = ccall((_u_strFoldCase, iculib), Int32,
               (Ptr{UChar}, Int32, Ptr{UChar}, Int32, UInt32, Ptr{UErrorCode}),
               dest, destsiz, src, length(src)-1, 0, err)
+    # Retry with large enough buffer if got buffer overflow
+    if err[1] == U_BUFFER_OVERFLOW_ERROR
+        err[1] = 0
+        destsiz = n + 1
+        dest = zeros(UInt16, destsiz)
+        n = ccall((_u_strFoldCase, iculib), Int32,
+                  (Ptr{UChar}, Int32, Ptr{UChar}, Int32, UInt32, Ptr{UErrorCode}),
+                  dest, destsiz, src, length(src)-1, 0, err)
+    end
     U_FAILURE(err[1]) && error("failed to map case")
     return UTF16String(dest[1:n+1])
 end
 
 function u_strToTitle(s::UTF16String)
     src = s.data
-    destsiz = @compat Int32(2*length(src))
+    destsiz = @compat Int32(length(src))
     dest = zeros(UInt16, destsiz)
     err = UErrorCode[0]
     breakiter = ccall((_ucasemap_getBreakIterator, iculib), Ptr{Void}, (Ptr{Void},), casemap)
     n = ccall((_u_strToTitle, iculib), Int32,
               (Ptr{UChar}, Int32, Ptr{UChar}, Int32, Ptr{Void}, Ptr{UInt8}, Ptr{UErrorCode}),
               dest, destsiz, src, length(src)-1, breakiter, locale, err)
+    # Retry with large enough buffer if got buffer overflow
+    if err[1] == U_BUFFER_OVERFLOW_ERROR
+        err[1] = 0
+        destsiz = n + 1
+        dest = zeros(UInt16, destsiz)
+        n = ccall((_u_strToTitle, iculib), Int32,
+                  (Ptr{UChar}, Int32, Ptr{UChar}, Int32, Ptr{Void}, Ptr{UInt8}, Ptr{UErrorCode}),
+                  dest, destsiz, src, length(src)-1, breakiter, locale, err)
+    end
     U_FAILURE(err[1]) && error("failed to map case")
     return UTF16String(dest[1:n+1])
 end
@@ -235,12 +262,21 @@ for f in [:ucasemap_utf8FoldCase,
           :ucasemap_utf8ToUpper]
     @eval begin
         function ($f)(src::UTF8String)
-            destsiz = @compat Int32(2*length(src))
+            destsiz = @compat Int32(sizeof(src.data)+1)
             dest = zeros(Cchar, destsiz)
             err = UErrorCode[0]
             n = ccall(($(symbol(string('_',f))), iculib), Int32,
                       (Ptr{Void}, Ptr{Cchar}, Int32, Ptr{Cchar}, Int32, Ptr{UErrorCode}),
                       casemap, dest, destsiz, src.data, sizeof(src.data), err)
+            # Retry with large enough buffer if got buffer overflow
+            if err[1] == U_BUFFER_OVERFLOW_ERROR
+                err[1] = 0
+                destsiz = n + 1
+                dest = zeros(Cchar, destsiz)
+                n = ccall(($(symbol(string('_',f))), iculib), Int32,
+                          (Ptr{Void}, Ptr{Cchar}, Int32, Ptr{Cchar}, Int32, Ptr{UErrorCode}),
+                          casemap, dest, destsiz, src.data, sizeof(src.data), err)
+            end
             U_FAILURE(err[1]) && error("failed to map case")
             return utf8(dest[1:n])
         end
