@@ -132,7 +132,7 @@ locale = C_NULL
 casemap = C_NULL
 collator = C_NULL
 
-typealias LocaleString Union(ASCIIString,Ptr{Void})
+typealias LocaleString @compat Union{ASCIIString,Ptr{Void}}
 
 function set_locale(loc::LocaleString)
     global locale, casemap, collator
