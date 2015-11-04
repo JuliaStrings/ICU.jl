@@ -6,8 +6,8 @@ module ICU
 
 using Compat
 
-import Base: close
-export close
+import Base: close, parse, get
+export close, parse, get
 
 export set_locale
 
@@ -604,9 +604,7 @@ function getDefaultTimeZone()
     UTF16String(buf[1:len+1])
 end
 
-export ICUDateFormat,
-       format,
-       parse
+export ICUDateFormat, format
 
 export UDAT_NONE,
        UDAT_FULL,
