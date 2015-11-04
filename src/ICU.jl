@@ -6,6 +6,9 @@ module ICU
 
 using Compat
 
+import Base: close
+export close
+
 export set_locale
 
 export U_FAILURE,
@@ -155,8 +158,9 @@ end
 
 ## utext ##
 
-immutable UText
+type UText
     p::Ptr{Void}
+    UText(p::Ptr) = (self = new(p); finalizer(self, utext_close); self)
 end
 
 function utext_open(str::UTF8String)
@@ -177,12 +181,8 @@ function utext_open(str::UTF16String)
     UText(p)
 end
 
-function utext_close(t::UText)
-    if (t.p != C_NULL)
-        ccall((_utext_close, iculib), Void, (Ptr{Void},), t.p)
-        t.p = C_NULL
-    end
-end
+utext_close(t::UText) =
+    t.p == C_NULL || (ccall((_utext_close, iculib), Void, (Ptr{Void},), t.p) ; t.p = C_NULL)
 
 ## ustring ##
 
@@ -294,7 +294,7 @@ const UBRK_TITLE = @compat Int32(4)
 
 type UBreakIterator
     p::Ptr{Void}
-    UBreakIterator(p::Ptr) = (self = new(p); finalizer(self, close); self)
+    UBreakIterator(p::Ptr) = (self = new(p); finalizer(self, ubrk_close); self)
 end
 
 function ubrk_open(kind::Integer, loc::LocaleString, s::Vector{UInt16})
@@ -315,12 +315,8 @@ function ubrk_open(kind::Integer, loc::LocaleString)
     UBreakIterator(p)
 end
 
-function ubrk_close(bi::UBreakIterator)
-    if bi.p != C_NULL
-        ccall((_ubrk_close, iculib), Void, (Ptr{Void},), bi.p)
-        bi.p = C_NULL
-    end
-end
+ubrk_close(bi::UBreakIterator) =
+    bi.p == C_NULL || (ccall((_ubrk_close, iculib), Void, (Ptr{Void},), bi.p) ; bi.p = C_NULL)
 
 ubrk_next(bi::UBreakIterator) =
     ccall((_ubrk_next, iculib), Int32, (Ptr{Void},), bi.p)
@@ -338,11 +334,11 @@ end
 
 type UConverter
     p::Ptr{Void}
-    UConverter(p::Ptr) = (self = new(p); finalizer(self, close); self)
+    UConverter(p::Ptr) = (self = new(p); finalizer(self, ucnv_close); self)
 end
 
 ucnv_close(c::UConverter) =
-    ccall((_ucnv_close, iculibi18n), Void, (Ptr{Void},), c.p)
+    c.p == C_NULL || (ccall((_ucnv_close, iculibi18n), Void, (Ptr{Void},), c.p) ; c.p = C_NULL)
 
 type UConverterPivot
     buf::Vector{UChar}
@@ -406,15 +402,11 @@ end
 
 type UCollator
     p::Ptr{Void}
-    UCollator(p::Ptr) = (self = new(p); finalizer(self, close); self)
+    UCollator(p::Ptr) = (self = new(p); finalizer(self, ucol_close); self)
 end
 
-function ucol_close(c::UCollator)
-    if c.p != C_NULL
-        ccall((_ucol_close, iculibi18n), Void, (Ptr{Void},), c.p)
-        c.p = C_NULL
-    end
-end
+ucol_close(c::UCollator) =
+    c.p == C_NULL || (ccall((_ucol_close, iculibi18n), Void, (Ptr{Void},), c.p) ; c.p = C_NULL)
 
 function ucol_open(loc::LocaleString)
     err = UErrorCode[0]
@@ -533,12 +525,8 @@ function ICUCalendar()
     ICUCalendar(p)
 end
 
-function close(cal::ICUCalendar)
-    if cal.ptr != C_NULL
-        ccall((_ucal_close, iculibi18n), Void, (Ptr{Void},), cal.ptr)
-        cal.ptr = C_NULL
-    end
-end
+close(c::ICUCalendar) =
+    c.ptr == C_NULL || (ccall((_ucal_close, iculibi18n), Void, (Ptr{Void},), c.ptr) ; c.ptr = C_NULL)
 
 getNow() = ccall((_ucal_getNow, iculibi18n), UDate, ())
 
@@ -661,7 +649,7 @@ function ICUDateFormat(tstyle::Integer, dstyle::Integer, tz::UTF16String)
 end
 
 close(df::ICUDateFormat) =
-    ccall((_udat_close, iculibi18n), Void, (Ptr{Void},), df.ptr)
+    df.ptr == C_NULL || (ccall((_udat_close, iculibi18n), Void, (Ptr{Void},), df.ptr) ; df.ptr = C_NULL)
 
 function format(df::ICUDateFormat, millis::Float64)
     err = UErrorCode[0]
